@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Binance Funding Scanner</title>
+<link rel="preconnect" href="https://cdnjs.cloudflare.com">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.5.0/tabler-icons.min.css">
+<style>
+:root {
+  --bg: #ffffff;
+  --bg-soft: #f7f7f5;
+  --bg-card: #ffffff;
+  --text: #1a1a1a;
+  --text-muted: #5f5e5a;
+  --text-faint: #888780;
+  --border: rgba(0,0,0,0.08);
+  --border-strong: rgba(0,0,0,0.16);
+  --danger: #A32D2D;
+  --danger-bg: rgba(163,45,45,0.08);
+  --success: #0F6E56;
+  --success-bg: rgba(15,110,86,0.08);
+  --warning: #854F0B;
+  --info: #185FA5;
+  --accent: #3266ad;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.container { max-width: 1400px; margin: 0 auto; padding: 24px 32px 60px; }
+header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+h1 { margin: 0; font-size: 22px; font-weight: 500; letter-spacing: -0.01em; }
+h1 .subtitle { font-size: 13px; color: var(--text-muted); font-weight: 400; margin-left: 8px; }
+.timestamp { font-size: 12px; color: var(--text-faint); text-align: right; }
+.timestamp strong { color: var(--text-muted); font-weight: 500; }
+section { margin-top: 32px; }
+h2 { margin: 0 0 12px; font-size: 16px; font-weight: 500; }
+h2 .hint { font-size: 12px; color: var(--text-muted); font-weight: 400; margin-left: 8px; }
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 20px 0 0; }
+.kpi { background: var(--bg-soft); border-radius: 8px; padding: 14px 16px; border: 1px solid var(--border); }
+.kpi-label { font-size: 12px; color: var(--text-muted); margin: 0 0 4px; }
+.kpi-value { font-size: 24px; font-weight: 500; margin: 0; line-height: 1.1; }
+.kpi-hint { font-size: 11px; color: var(--text-faint); margin: 4px 0 0; }
+.kpi.danger .kpi-value { color: var(--danger); }
+.kpi.success .kpi-value { color: var(--success); }
+.legend-box { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin: 16px 0; font-size: 12px; color: var(--text-muted); line-height: 1.7; }
+.legend-box .ti { font-size: 14px; vertical-align: -2px; margin-right: 4px; }
+.chart-wrap { position: relative; width: 100%; height: 460px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.tab-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.tab-btn { background: transparent; border: 1px solid var(--border); padding: 6px 14px; font-size: 12px; border-radius: 6px; cursor: pointer; color: var(--text-muted); font-family: inherit; transition: all 0.15s; }
+.tab-btn:hover { background: var(--bg-soft); color: var(--text); }
+.tab-btn.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead tr { border-bottom: 1px solid var(--border-strong); }
+th { text-align: left; padding: 10px 8px; font-weight: 500; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+th.num { text-align: right; }
+th.center { text-align: center; }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--text); }
+th.sortable .ti { font-size: 12px; vertical-align: -1px; opacity: 0.5; }
+tbody tr { border-bottom: 1px solid var(--border); }
+tbody tr:hover { background: var(--bg-soft); }
+td { padding: 10px 8px; font-variant-numeric: tabular-nums; }
+td.num { text-align: right; }
+td.center { text-align: center; }
+td.sym { font-weight: 500; }
+.danger { color: var(--danger); }
+.success { color: var(--success); }
+.muted { color: var(--text-muted); }
+.badge { display: inline-block; padding: 2px 8px; font-size: 10px; border-radius: 4px; font-weight: 500; white-space: nowrap; }
+.badge-cat-equity { background: rgba(213,90,48,0.15); color: #993C1D; }
+.badge-cat-commodity { background: rgba(239,159,39,0.15); color: #854F0B; }
+.badge-cat-major { background: rgba(55,138,221,0.15); color: #185FA5; }
+.badge-cat-alt { background: rgba(127,119,221,0.15); color: #3C3489; }
+.badge-action-short { background: var(--danger-bg); color: var(--danger); padding: 3px 10px; font-size: 11px; }
+.badge-action-long { background: var(--success-bg); color: var(--success); padding: 3px 10px; font-size: 11px; }
+.badge-action-wait { background: var(--bg-soft); color: var(--text-muted); padding: 3px 10px; font-size: 11px; }
+.trend-up { color: var(--success); }
+.trend-down { color: var(--danger); }
+.trend-flat { color: var(--text-faint); }
+.score-bar { display: inline-block; width: 56px; height: 6px; background: var(--bg-soft); border-radius: 3px; vertical-align: middle; margin-left: 6px; position: relative; overflow: hidden; }
+.score-bar-fill { position: absolute; top: 0; height: 100%; }
+.score-bar-fill.pos { background: var(--success); left: 50%; }
+.score-bar-fill.neg { background: var(--danger); right: 50%; }
+.score-bar-mid { position: absolute; top: 0; left: 50%; width: 1px; height: 100%; background: var(--border-strong); }
+.spark-cell { width: 90px; }
+.error-banner { background: var(--danger-bg); color: var(--danger); padding: 12px 16px; border-radius: 8px; margin: 16px 0; font-size: 13px; }
+.stale-banner { background: rgba(239,159,39,0.1); color: var(--warning); padding: 12px 16px; border-radius: 8px; margin: 16px 0; font-size: 13px; }
+.footer-note { margin-top: 32px; padding: 16px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; color: var(--text-muted); line-height: 1.7; }
+.footer-note strong { color: var(--text); font-weight: 500; }
+@media (max-width: 800px) {
+  .container { padding: 16px; }
+  header { flex-direction: column; align-items: flex-start; }
+  .timestamp { text-align: left; }
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<header>
+  <div>
+    <h1>Binance USD-M funding scanner<span class="subtitle">funding extremity × trend confirmation</span></h1>
+  </div>
+  <div class="timestamp" id="timestamp">
+    <div>Loading…</div>
+  </div>
+</header>
+
+<div id="banner-area"></div>
+
+<section>
+  <div class="kpi-grid" id="kpi-grid"></div>
+</section>
+
+<section>
+  <h2>Headline setups<span class="hint">extreme funding + trend confirmation — trade these first</span></h2>
+  <div id="tbl-headline"></div>
+</section>
+
+<section>
+  <h2>Funding vs price<span class="hint">coloured by trend status — points in the corners with red = best paid-short setups, with green = best paid-long setups</span></h2>
+  <div class="tab-row" id="cat-tabs">
+    <button class="tab-btn active" data-cat="all">All</button>
+    <button class="tab-btn" data-cat="TradFi-Equity">TradFi equity</button>
+    <button class="tab-btn" data-cat="TradFi-Commodity">TradFi commodity</button>
+    <button class="tab-btn" data-cat="Crypto-Major">Crypto major</button>
+    <button class="tab-btn" data-cat="Crypto-Alt">Crypto alt</button>
+  </div>
+  <div class="chart-wrap">
+    <canvas id="quadrant" role="img" aria-label="Scatter plot of 30-day annualised funding rate versus 30-day price change, with point colour indicating trend direction."></canvas>
+  </div>
+  <div class="legend-box">
+    <i class="ti ti-trending-down trend-down"></i>Trend rolling over (score ≤ −3)
+    &nbsp;·&nbsp;
+    <i class="ti ti-trending-flat trend-flat"></i>Inflecting (−2 to +2)
+    &nbsp;·&nbsp;
+    <i class="ti ti-trending-up trend-up"></i>Trending up (≥ +3)
+    <br>
+    <span style="color: var(--text-faint); font-size: 11px;">Trend score = sum of 7 signals on 10/20/50d MA stack. Range clamped to [−6, +6].</span>
+  </div>
+</section>
+
+<section>
+  <h2>Stretched longs<span class="hint">positive funding ranked descending — wait if trend still up</span></h2>
+  <div id="tbl-stretched"></div>
+</section>
+
+<section>
+  <h2>Crowded shorts<span class="hint">negative funding ranked ascending — wait if trend still down</span></h2>
+  <div id="tbl-crowded"></div>
+</section>
+
+<section>
+  <h2>Regime shifts<span class="hint">7d funding minus 30d funding — fresh crowding (top) or unwinding (bottom)</span></h2>
+  <div id="tbl-regime"></div>
+</section>
+
+<div class="footer-note">
+  <strong>How to read this dashboard.</strong> Headline table = stretched funding + trend confirmation = highest conviction. Stretched longs with trend still up = "wait for the roll" — do not fight live momentum even with funding paying you. Funding alone is not a thesis — pair with an independent fundamental view. Position sizing should assume a 2–3 day forced-unwind window for TradFi perps given delisting precedent. Liquidity filter: 24h volume ≥ $5M USDT. Refresh: twice daily at 08:00 and 20:00 SGT via GitHub Action.
+</div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+// Data is injected by build.py via this placeholder. If the placeholder is
+// untouched (local dev, no build run), we fall back to fetching data/scan.json.
+const INJECTED_DATA = /*__INJECT_DATA__*/null;
+
+const CAT_LABELS = {
+  'TradFi-Equity': 'TradFi equity',
+  'TradFi-Commodity': 'TradFi commodity',
+  'Crypto-Major': 'Crypto major',
+  'Crypto-Alt': 'Crypto alt',
+};
+const CAT_BADGE_CLASS = {
+  'TradFi-Equity': 'badge-cat-equity',
+  'TradFi-Commodity': 'badge-cat-commodity',
+  'Crypto-Major': 'badge-cat-major',
+  'Crypto-Alt': 'badge-cat-alt',
+};
+const TREND_COLORS = {
+  up:   { bg: 'rgba(15,110,86,0.6)',  border: '#0F6E56' },
+  flat: { bg: 'rgba(127,127,127,0.45)', border: '#5F5E5A' },
+  down: { bg: 'rgba(163,45,45,0.6)',  border: '#A32D2D' },
+};
+const TREND_ICON = { up: 'ti-trending-up', flat: 'ti-trending-flat', down: 'ti-trending-down' };
+
+let DATA = null;
+let CHART = null;
+let CURRENT_CAT = 'all';
+
+function fmtPct(v, sign = true) {
+  if (v === null || v === undefined || Number.isNaN(v)) return '—';
+  const s = sign && v >= 0 ? '+' : '';
+  return s + v.toFixed(1) + '%';
+}
+function fmtVol(v) {
+  if (v === null || v === undefined) return '—';
+  if (v >= 1000) return '$' + (v / 1000).toFixed(1) + 'B';
+  return '$' + Math.round(v) + 'M';
+}
+function fmtTimestamp(iso) {
+  const d = new Date(iso);
+  const opts = { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Singapore' };
+  return d.toLocaleString('en-GB', opts) + ' SGT';
+}
+
+function trendIcon(label) {
+  return `<i class="ti ${TREND_ICON[label]} trend-${label}" style="font-size:16px; vertical-align:-3px;" aria-hidden="true"></i>`;
+}
+
+function scoreBar(score) {
+  const pct = Math.abs(score) / 6 * 50;
+  const cls = score >= 0 ? 'pos' : 'neg';
+  const style = score >= 0
+    ? `width: ${pct}%; left: 50%;`
+    : `width: ${pct}%; right: 50%;`;
+  return `<span class="score-bar"><span class="score-bar-mid"></span><span class="score-bar-fill ${cls}" style="${style}"></span></span>`;
+}
+
+function catBadge(cat) {
+  return `<span class="badge ${CAT_BADGE_CLASS[cat]}">${CAT_LABELS[cat]}</span>`;
+}
+
+function sparkline(values, w = 80, h = 22) {
+  if (!values || !values.length) return '';
+  const min = Math.min(...values, 0);
+  const max = Math.max(...values, 0);
+  const range = max - min || 1;
+  const step = w / Math.max(values.length - 1, 1);
+  const points = values.map((v, i) =>
+    `${(i * step).toFixed(1)},${(h - (v - min) / range * h).toFixed(1)}`
+  ).join(' ');
+  const yZero = h - (0 - min) / range * h;
+  const last = values[values.length - 1];
+  const color = last >= 0 ? '#A32D2D' : '#0F6E56';
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block;">
+    <line x1="0" y1="${yZero}" x2="${w}" y2="${yZero}" stroke="rgba(127,127,127,0.3)" stroke-width="0.5" stroke-dasharray="2,2"/>
+    <polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.2"/>
+  </svg>`;
+}
+
+function direction(r) {
+  if (r.fund_ann_30d > 30 && r.trend_score <= -3) return { action: 'SHORT', cls: 'badge-action-short' };
+  if (r.fund_ann_30d < -15 && r.trend_score >= 3) return { action: 'LONG', cls: 'badge-action-long' };
+  return { action: 'WAIT', cls: 'badge-action-wait' };
+}
+
+function readLabel(r) {
+  if (r.fund_ann_30d > 30 && r.trend_score <= -3) return '<span class="danger" style="font-weight:500;">Short setup</span>';
+  if (r.fund_ann_30d > 30 && r.trend_score >= 3) return '<span class="muted">Wait for roll</span>';
+  if (r.fund_ann_30d < -15 && r.trend_score >= 3) return '<span class="success" style="font-weight:500;">Long setup</span>';
+  if (r.fund_ann_30d < -15 && r.trend_score <= -3) return '<span class="muted">Capitulation ongoing</span>';
+  return '<span class="muted" style="opacity:0.7;">Watch</span>';
+}
+
+function renderKPIs(s) {
+  const html = `
+    <div class="kpi"><p class="kpi-label">Universe scanned</p><p class="kpi-value">${s.universe_total}</p><p class="kpi-hint">${s.universe_liquid} pass liquidity filter</p></div>
+    <div class="kpi danger"><p class="kpi-label">Stretched longs</p><p class="kpi-value">${s.stretched_longs}</p><p class="kpi-hint">funding > +30%/yr</p></div>
+    <div class="kpi danger"><p class="kpi-label">Trend-confirmed shorts</p><p class="kpi-value">${s.trend_confirmed_shorts}</p><p class="kpi-hint">stretched + rolling over</p></div>
+    <div class="kpi success"><p class="kpi-label">Crowded shorts</p><p class="kpi-value">${s.crowded_shorts}</p><p class="kpi-hint">funding < −15%/yr</p></div>
+    <div class="kpi success"><p class="kpi-label">Trend-confirmed longs</p><p class="kpi-value">${s.trend_confirmed_longs}</p><p class="kpi-hint">crowded + reclaiming</p></div>
+    <div class="kpi"><p class="kpi-label">Regime shifts</p><p class="kpi-value">${s.regime_shifts}</p><p class="kpi-hint">|7d − 30d| > 25pp</p></div>
+  `;
+  document.getElementById('kpi-grid').innerHTML = html;
+}
+
+function renderHeadlineTable(rows) {
+  if (!rows.length) {
+    document.getElementById('tbl-headline').innerHTML = '<div class="muted" style="padding: 16px; background: var(--bg-soft); border-radius: 8px;">No trend-confirmed setups today. Funding extremes exist but trends do not yet confirm. Wait for the roll.</div>';
+    return;
+  }
+  const head = `<thead><tr>
+    <th>Action</th><th>Symbol</th><th>Category</th>
+    <th class="num">Funding 30d</th><th class="num">Funding 7d</th>
+    <th class="num">Px Δ30d</th><th class="num">Trend score</th>
+    <th class="center">Trend</th><th class="num">24h vol</th>
+  </tr></thead>`;
+  const body = rows.map(r => {
+    const d = direction(r);
+    return `<tr>
+      <td><span class="badge ${d.cls}">${d.action}</span></td>
+      <td class="sym">${r.symbol}</td>
+      <td>${catBadge(r.category)}</td>
+      <td class="num ${r.fund_ann_30d >= 0 ? 'danger' : 'success'}">${fmtPct(r.fund_ann_30d)}</td>
+      <td class="num muted">${fmtPct(r.fund_ann_7d)}</td>
+      <td class="num">${fmtPct(r.px_chg_30d)}</td>
+      <td class="num">${r.trend_score >= 0 ? '+' : ''}${r.trend_score}${scoreBar(r.trend_score)}</td>
+      <td class="center">${trendIcon(r.trend_label)}</td>
+      <td class="num muted">${fmtVol(r.vol_24h_m)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('tbl-headline').innerHTML = `<table>${head}<tbody>${body}</tbody></table>`;
+}
+
+function renderStdTable(rows, target) {
+  if (!rows.length) {
+    document.getElementById(target).innerHTML = '<div class="muted" style="padding: 16px;">No rows.</div>';
+    return;
+  }
+  const head = `<thead><tr>
+    <th>Symbol</th><th>Category</th>
+    <th class="num">Funding 30d</th><th class="num">Funding 7d</th>
+    <th class="num">Δ 7d−30d</th><th class="num">Px Δ30d</th>
+    <th class="num">Score</th><th class="center">Trend</th>
+    <th>30d funding</th><th>Read</th>
+  </tr></thead>`;
+  const body = rows.map(r => `<tr>
+    <td class="sym">${r.symbol}</td>
+    <td>${catBadge(r.category)}</td>
+    <td class="num ${r.fund_ann_30d >= 0 ? 'danger' : 'success'}">${fmtPct(r.fund_ann_30d)}</td>
+    <td class="num muted">${fmtPct(r.fund_ann_7d)}</td>
+    <td class="num ${r.fund_delta_7d_30d >= 0 ? 'danger' : 'success'}">${fmtPct(r.fund_delta_7d_30d)}</td>
+    <td class="num">${fmtPct(r.px_chg_30d)}</td>
+    <td class="num">${r.trend_score >= 0 ? '+' : ''}${r.trend_score}</td>
+    <td class="center">${trendIcon(r.trend_label)}</td>
+    <td class="spark-cell">${sparkline(r.fund_spark)}</td>
+    <td>${readLabel(r)}</td>
+  </tr>`).join('');
+  document.getElementById(target).innerHTML = `<table>${head}<tbody>${body}</tbody></table>`;
+}
+
+function renderQuadrant(catFilter) {
+  const filtered = catFilter === 'all'
+    ? DATA.rows
+    : DATA.rows.filter(r => r.category === catFilter);
+
+  const datasets = ['up', 'flat', 'down'].map(t => ({
+    label: t,
+    data: filtered.filter(r => r.trend_label === t).map(r => ({
+      x: r.px_chg_30d, y: r.fund_ann_30d, sym: r.symbol, t: r.trend_label, score: r.trend_score
+    })),
+    backgroundColor: TREND_COLORS[t].bg,
+    borderColor: TREND_COLORS[t].border,
+    borderWidth: 1.5,
+    pointRadius: 7,
+    pointHoverRadius: 10,
+  }));
+
+  if (CHART) CHART.destroy();
+  CHART = new Chart(document.getElementById('quadrant'), {
+    type: 'scatter',
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: 16 },
+      scales: {
+        x: { title: { display: true, text: '30d price change (%)' }, grid: { color: 'rgba(127,127,127,0.12)' }, ticks: { callback: v => v + '%' } },
+        y: { title: { display: true, text: '30d annualised funding (%)' }, grid: { color: 'rgba(127,127,127,0.12)' }, ticks: { callback: v => v + '%' } },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${ctx.raw.sym}: f=${fmtPct(ctx.raw.y)}, px=${fmtPct(ctx.raw.x)}, score=${ctx.raw.score >= 0 ? '+' : ''}${ctx.raw.score}`,
+          }
+        }
+      }
+    },
+    plugins: [{
+      id: 'quadrants',
+      beforeDraw(c) {
+        const { ctx, chartArea, scales } = c;
+        const x0 = scales.x.getPixelForValue(0);
+        const y0 = scales.y.getPixelForValue(0);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(127,127,127,0.4)';
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(x0, chartArea.top); ctx.lineTo(x0, chartArea.bottom); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(chartArea.left, y0); ctx.lineTo(chartArea.right, y0); ctx.stroke();
+        ctx.restore();
+        ctx.save();
+        ctx.fillStyle = 'rgba(127,127,127,0.6)';
+        ctx.font = '11px ' + getComputedStyle(document.body).fontFamily;
+        ctx.fillText('Stretched longs', chartArea.right - 110, chartArea.top + 16);
+        ctx.fillText('Capitulation longs', chartArea.left + 8, chartArea.bottom - 8);
+        ctx.fillText('Short squeeze setup', chartArea.right - 130, chartArea.bottom - 8);
+        ctx.fillText('Trapped shorts', chartArea.left + 8, chartArea.top + 16);
+        ctx.restore();
+      }
+    }]
+  });
+}
+
+function renderAll() {
+  document.getElementById('timestamp').innerHTML =
+    `<div>Last updated</div><strong>${fmtTimestamp(DATA.generated_at_utc)}</strong>`;
+
+  // Stale-data warning
+  const ageHours = (Date.now() - new Date(DATA.generated_at_utc).getTime()) / 3_600_000;
+  if (ageHours > 18) {
+    document.getElementById('banner-area').innerHTML =
+      `<div class="stale-banner">Data is ${ageHours.toFixed(0)} hours old — last refresh may have failed. Check GitHub Action logs.</div>`;
+  }
+
+  renderKPIs(DATA.summary);
+
+  const headlineSet = new Set(DATA.headline_symbols);
+  const headline = DATA.rows.filter(r => headlineSet.has(r.symbol))
+    .sort((a, b) => Math.abs(b.fund_ann_30d) - Math.abs(a.fund_ann_30d));
+  renderHeadlineTable(headline);
+
+  const stretched = DATA.rows.filter(r => r.fund_ann_30d > 0)
+    .sort((a, b) => b.fund_ann_30d - a.fund_ann_30d).slice(0, 25);
+  renderStdTable(stretched, 'tbl-stretched');
+
+  const crowded = DATA.rows.filter(r => r.fund_ann_30d < 0)
+    .sort((a, b) => a.fund_ann_30d - b.fund_ann_30d).slice(0, 20);
+  renderStdTable(crowded, 'tbl-crowded');
+
+  const regime = [...DATA.rows]
+    .sort((a, b) => Math.abs(b.fund_delta_7d_30d) - Math.abs(a.fund_delta_7d_30d)).slice(0, 20);
+  renderStdTable(regime, 'tbl-regime');
+
+  renderQuadrant(CURRENT_CAT);
+}
+
+function setupTabs() {
+  document.querySelectorAll('#cat-tabs .tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#cat-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      CURRENT_CAT = btn.dataset.cat;
+      renderQuadrant(CURRENT_CAT);
+    });
+  });
+}
+
+async function loadData() {
+  if (INJECTED_DATA && INJECTED_DATA.rows && INJECTED_DATA.rows.length) {
+    DATA = INJECTED_DATA;
+    renderAll();
+    setupTabs();
+    return;
+  }
+  // Fallback for local dev
+  try {
+    const r = await fetch('data/scan.json', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    DATA = await r.json();
+    renderAll();
+    setupTabs();
+  } catch (e) {
+    document.getElementById('banner-area').innerHTML =
+      `<div class="error-banner">Failed to load data — ${e.message}. Run <code>python scripts/build.py</code> to generate data/scan.json, or wait for the next GitHub Action run.</div>`;
+    document.getElementById('timestamp').innerHTML = '<div class="muted">No data</div>';
+  }
+}
+
+loadData();
+</script>
+
+</body>
+</html>

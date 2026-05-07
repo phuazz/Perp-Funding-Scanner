@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Binance Funding Scanner</title>
+<link rel="preconnect" href="https://cdnjs.cloudflare.com">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.5.0/tabler-icons.min.css">
+<style>
+:root {
+  --bg: #ffffff;
+  --bg-soft: #f7f7f5;
+  --bg-card: #ffffff;
+  --text: #1a1a1a;
+  --text-muted: #5f5e5a;
+  --text-faint: #888780;
+  --border: rgba(0,0,0,0.08);
+  --border-strong: rgba(0,0,0,0.16);
+  --danger: #A32D2D;
+  --danger-bg: rgba(163,45,45,0.08);
+  --success: #0F6E56;
+  --success-bg: rgba(15,110,86,0.08);
+  --warning: #854F0B;
+  --info: #185FA5;
+  --accent: #3266ad;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.container { max-width: 1400px; margin: 0 auto; padding: 24px 32px 60px; }
+header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+h1 { margin: 0; font-size: 22px; font-weight: 500; letter-spacing: -0.01em; }
+h1 .subtitle { font-size: 13px; color: var(--text-muted); font-weight: 400; margin-left: 8px; }
+.timestamp { font-size: 12px; color: var(--text-faint); text-align: right; }
+.timestamp strong { color: var(--text-muted); font-weight: 500; }
+section { margin-top: 32px; }
+h2 { margin: 0 0 12px; font-size: 16px; font-weight: 500; }
+h2 .hint { font-size: 12px; color: var(--text-muted); font-weight: 400; margin-left: 8px; }
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 20px 0 0; }
+.kpi { background: var(--bg-soft); border-radius: 8px; padding: 14px 16px; border: 1px solid var(--border); }
+.kpi-label { font-size: 12px; color: var(--text-muted); margin: 0 0 4px; }
+.kpi-value { font-size: 24px; font-weight: 500; margin: 0; line-height: 1.1; }
+.kpi-hint { font-size: 11px; color: var(--text-faint); margin: 4px 0 0; }
+.kpi.danger .kpi-value { color: var(--danger); }
+.kpi.success .kpi-value { color: var(--success); }
+.legend-box { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin: 16px 0; font-size: 12px; color: var(--text-muted); line-height: 1.7; }
+.legend-box .ti { font-size: 14px; vertical-align: -2px; margin-right: 4px; }
+.chart-wrap { position: relative; width: 100%; height: 460px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.tab-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.tab-btn { background: transparent; border: 1px solid var(--border); padding: 6px 14px; font-size: 12px; border-radius: 6px; cursor: pointer; color: var(--text-muted); font-family: inherit; transition: all 0.15s; }
+.tab-btn:hover { background: var(--bg-soft); color: var(--text); }
+.tab-btn.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead tr { border-bottom: 1px solid var(--border-strong); }
+th { text-align: left; padding: 10px 8px; font-weight: 500; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+th.num { text-align: right; }
+th.center { text-align: center; }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--text); }
+th.sortable .ti { font-size: 12px; vertical-align: -1px; opacity: 0.5; }
+tbody tr { border-bottom: 1px solid var(--border); }
+tbody tr:hover { background: var(--bg-soft); }
+td { padding: 10px 8px; font-variant-numeric: tabular-nums; }
+td.num { text-align: right; }
+td.center { text-align: center; }
+td.sym { font-weight: 500; }
+.danger { color: var(--danger); }
+.success { color: var(--success); }
+.muted { color: var(--text-muted); }
+.badge { display: inline-block; padding: 2px 8px; font-size: 10px; border-radius: 4px; font-weight: 500; white-space: nowrap; }
+.badge-cat-equity { background: rgba(213,90,48,0.15); color: #993C1D; }
+.badge-cat-commodity { background: rgba(239,159,39,0.15); color: #854F0B; }
+.badge-cat-major { background: rgba(55,138,221,0.15); color: #185FA5; }
+.badge-cat-alt { background: rgba(127,119,221,0.15); color: #3C3489; }
+.badge-action-short { background: var(--danger-bg); color: var(--danger); padding: 3px 10px; font-size: 11px; }
+.badge-action-long { background: var(--success-bg); color: var(--success); padding: 3px 10px; font-size: 11px; }
+.badge-action-wait { background: var(--bg-soft); color: var(--text-muted); padding: 3px 10px; font-size: 11px; }
+.trend-up { color: var(--success); }
+.trend-down { color: var(--danger); }
+.trend-flat { color: var(--text-faint); }
+.score-bar { display: inline-block; width: 56px; height: 6px; background: var(--bg-soft); border-radius: 3px; vertical-align: middle; margin-left: 6px; position: relative; overflow: hidden; }
+.score-bar-fill { position: absolute; top: 0; height: 100%; }
+.score-bar-fill.pos { background: var(--success); left: 50%; }
+.score-bar-fill.neg { background: var(--danger); right: 50%; }
+.score-bar-mid { position: absolute; top: 0; left: 50%; width: 1px; height: 100%; background: var(--border-strong); }
+.spark-cell { width: 90px; }
+.error-banner { background: var(--danger-bg); color: var(--danger); padding: 12px 16px; border-radius: 8px; margin: 16px 0; font-size: 13px; }
+.stale-banner { background: rgba(239,159,39,0.1); color: var(--warning); padding: 12px 16px; border-radius: 8px; margin: 16px 0; font-size: 13px; }
+.footer-note { margin-top: 32px; padding: 16px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; color: var(--text-muted); line-height: 1.7; }
+.footer-note strong { color: var(--text); font-weight: 500; }
+@media (max-width: 800px) {
+  .container { padding: 16px; }
+  header { flex-direction: column; align-items: flex-start; }
+  .timestamp { text-align: left; }
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<header>
+  <div>
+    <h1>Binance USD-M funding scanner<span class="subtitle">funding extremity × trend confirmation</span></h1>
+  </div>
+  <div class="timestamp" id="timestamp">
+    <div>Loading…</div>
+  </div>
+</header>
+
+<div id="banner-area"></div>
+
+<section>
+  <div class="kpi-grid" id="kpi-grid"></div>
+</section>
+
+<section>
+  <h2>Headline setups<span class="hint">extreme funding + trend confirmation — trade these first</span></h2>
+  <div id="tbl-headline"></div>
+</section>
+
+<section>
+  <h2>Funding vs price<span class="hint">coloured by trend status — points in the corners with red = best paid-short setups, with green = best paid-long setups</span></h2>
+  <div class="tab-row" id="cat-tabs">
+    <button class="tab-btn active" data-cat="all">All</button>
+    <button class="tab-btn" data-cat="TradFi-Equity">TradFi equity</button>
+    <button class="tab-btn" data-cat="TradFi-Commodity">TradFi commodity</button>
+    <button class="tab-btn" data-cat="Crypto-Major">Crypto major</button>
+    <button class="tab-btn" data-cat="Crypto-Alt">Crypto alt</button>
+  </div>
+  <div class="chart-wrap">
+    <canvas id="quadrant" role="img" aria-label="Scatter plot of 30-day annualised funding rate versus 30-day price change, with point colour indicating trend direction."></canvas>
+  </div>
+  <div class="legend-box">
+    <i class="ti ti-trending-down trend-down"></i>Trend rolling over (score ≤ −3)
+    &nbsp;·&nbsp;
+    <i class="ti ti-trending-flat trend-flat"></i>Inflecting (−2 to +2)
+    &nbsp;·&nbsp;
+    <i class="ti ti-trending-up trend-up"></i>Trending up (≥ +3)
+    <br>
+    <span style="color: var(--text-faint); font-size: 11px;">Trend score = sum of 7 signals on 10/20/50d MA stack. Range clamped to [−6, +6].</span>
+  </div>
+</section>
+
+<section>
+  <h2>Stretched longs<span class="hint">positive funding ranked descending — wait if trend still up</span></h2>
+  <div id="tbl-stretched"></div>
+</section>
+
+<section>
+  <h2>Crowded shorts<span class="hint">negative funding ranked ascending — wait if trend still down</span></h2>
+  <div id="tbl-crowded"></div>
+</section>
+
+<section>
+  <h2>Regime shifts<span class="hint">7d funding minus 30d funding — fresh crowding (top) or unwinding (bottom)</span></h2>
+  <div id="tbl-regime"></div>
+</section>
+
+<div class="footer-note">
+  <strong>How to read this dashboard.</strong> Headline table = stretched funding + trend confirmation = highest conviction. Stretched longs with trend still up = "wait for the roll" — do not fight live momentum even with funding paying you. Funding alone is not a thesis — pair with an independent fundamental view. Position sizing should assume a 2–3 day forced-unwind window for TradFi perps given delisting precedent. Liquidity filter: 24h volume ≥ $5M USDT. Refresh: twice daily at 08:00 and 20:00 SGT via GitHub Action.
+</div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+// Data is injected by build.py via this placeholder. If the placeholder is
+// untouched (local dev, no build run), we fall back to fetching data/scan.json.
+const INJECTED_DATA = {"generated_at_utc":"2026-05-07T15:47:50.652306+00:00","config":{"lookback_days":60,"min_volume_usdt_m":5.0,"stretched_long_threshold":30,"crowded_short_threshold":-15,"trend_confirm_score":3,"sample_data":true},"summary":{"universe_total":21,"universe_liquid":21,"stretched_longs":10,"crowded_shorts":3,"trend_confirmed_shorts":5,"trend_confirmed_longs":2,"regime_shifts":2},"rows":[{"symbol":"MSTRUSDT","category":"TradFi-Equity","price":128.0656,"vol_24h_m":142,"px_chg_24h":-2.85,"px_chg_30d":24.3,"fund_interval_h":4,"fund_ann_30d":78.4,"fund_ann_7d":92.1,"fund_cum_30d":6.444,"fund_delta_7d_30d":13.7,"fund_spark":[0.0982,0.0878,0.1905,0.1785,0.2216,0.0606,0.1276,0.0492,0.0869,0.1443,0.0485,0.083,0.1732,0.1522,0.0873,0.161,0.2051,0.0445,0.2044,0.1828,0.1112,0.0743,0.2346,0.1105,0.0617,0.0625,0.2127,0.1639,0.2046,0.1891],"trend_score":-5,"trend_label":"down","n_settlements_30d":180},{"symbol":"NVDAUSDT","category":"TradFi-Equity","price":107.4775,"vol_24h_m":312,"px_chg_24h":2.84,"px_chg_30d":18.6,"fund_interval_h":4,"fund_ann_30d":54.2,"fund_ann_7d":71.8,"fund_cum_30d":4.455,"fund_delta_7d_30d":17.6,"fund_spark":[0.0747,0.1094,0.1649,0.1227,0.1713,0.1145,0.1399,0.0082,0.0446,0.0569,0.015,0.0456,0.0192,0.0546,0.1261,0.072,0.073,0.0409,0.0524,0.1863,0.1286,0.1208,0.0332,0.1448,0.0317,0.0749,0.1969,0.127,0.1104,0.1359],"trend_score":1,"trend_label":"flat","n_settlements_30d":180},{"symbol":"MUUSDT","category":"TradFi-Equity","price":168.649,"vol_24h_m":48,"px_chg_24h":1.66,"px_chg_30d":22.1,"fund_interval_h":4,"fund_ann_30d":43.6,"fund_ann_7d":58.2,"fund_cum_30d":3.584,"fund_delta_7d_30d":14.6,"fund_spark":[0.0254,-0.0139,0.0427,0.0332,0.0218,0.1682,0.1549,0.0426,0.1107,0.0588,0.1625,0.0714,0.0326,0.029,0.0919,0.0322,0.0966,0.1592,0.0595,0.0235,0.1791,0.0815,-0.0022,-0.0109,0.0016,0.1051,0.1381,0.0641,-0.0077,0.056],"trend_score":-4,"trend_label":"down","n_settlements_30d":180},{"symbol":"COINUSDT","category":"TradFi-Equity","price":199.2262,"vol_24h_m":96,"px_chg_24h":0.17,"px_chg_30d":11.2,"fund_interval_h":4,"fund_ann_30d":62.5,"fund_ann_7d":48.3,"fund_cum_30d":5.137,"fund_delta_7d_30d":-14.2,"fund_spark":[0.2084,0.1863,0.0165,0.1583,0.1505,0.1215,0.0675,0.1423,0.0365,0.1011,0.1049,0.2049,0.1893,0.0668,0.1143,0.0499,0.1967,0.1883,0.0738,0.1419,0.1359,0.0447,0.1667,0.122,0.1699,0.1202,0.0143,0.079,0.0181,0.2],"trend_score":-5,"trend_label":"down","n_settlements_30d":180},{"symbol":"TSLAUSDT","category":"TradFi-Equity","price":175.805,"vol_24h_m":178,"px_chg_24h":1.99,"px_chg_30d":9.4,"fund_interval_h":4,"fund_ann_30d":38.9,"fund_ann_7d":45.2,"fund_cum_30d":3.197,"fund_delta_7d_30d":6.3,"fund_spark":[0.0326,-0.0174,0.1467,0.1604,-0.0118,0.0682,-0.0151,0.1232,0.1242,-0.0033,0.0661,0.081,0.0241,0.1455,0.0557,0.0134,0.0789,0.117,0.0113,0.0334,0.1701,0.101,0.0587,0.0746,-0.0047,0.016,0.0387,0.0887,0.0171,0.0151],"trend_score":4,"trend_label":"up","n_settlements_30d":180},{"symbol":"PLTRUSDT","category":"TradFi-Equity","price":14.6631,"vol_24h_m":34,"px_chg_24h":0.79,"px_chg_30d":31.8,"fund_interval_h":4,"fund_ann_30d":51.3,"fund_ann_7d":67.4,"fund_cum_30d":4.216,"fund_delta_7d_30d":16.1,"fund_spark":[0.0395,0.1748,0.1656,0.0079,0.0413,0.1275,0.0365,0.0202,0.1808,0.1079,0.0882,0.1506,0.1552,0.0318,0.0131,0.0799,0.0784,0.0871,0.1395,0.1284,0.1905,0.0134,0.0742,0.0616,0.166,0.0434,0.0317,0.0834,0.0781,0.0494],"trend_score":5,"trend_label":"up","n_settlements_30d":180},{"symbol":"AAPLUSDT","category":"TradFi-Equity","price":50.3364,"vol_24h_m":64,"px_chg_24h":2.54,"px_chg_30d":4.8,"fund_interval_h":4,"fund_ann_30d":18.2,"fund_ann_7d":24.6,"fund_cum_30d":1.496,"fund_delta_7d_30d":6.4,"fund_spark":[0.0219,0.1055,0.0433,-0.0566,0.1331,0.1004,0.127,0.1185,0.103,-0.0335,0.0304,-0.024,0.0135,-0.055,0.009,0.1303,-0.0137,0.0901,0.0242,0.0178,0.1247,0.1323,0.0444,0.0769,-0.0358,-0.0074,0.127,0.0491,0.0417,0.0828],"trend_score":2,"trend_label":"flat","n_settlements_30d":180},{"symbol":"METAUSDT","category":"TradFi-Equity","price":11.9045,"vol_24h_m":42,"px_chg_24h":0.51,"px_chg_30d":7.3,"fund_interval_h":4,"fund_ann_30d":26.8,"fund_ann_7d":31.2,"fund_cum_30d":2.203,"fund_delta_7d_30d":4.4,"fund_spark":[0.0495,0.1195,-0.0196,0.1411,-0.035,-0.0139,0.068,0.084,-0.004,-0.0271,0.127,-0.0018,0.0679,0.0728,0.0328,0.0657,0.0535,0.1359,-0.0102,0.0922,-0.0033,0.0281,0.0833,0.0089,0.0122,0.0993,-0.0365,0.0406,0.1486,0.1482],"trend_score":3,"trend_label":"up","n_settlements_30d":180},{"symbol":"XAGUSDT","category":"TradFi-Commodity","price":15.1155,"vol_24h_m":860,"px_chg_24h":-1.72,"px_chg_30d":6.5,"fund_interval_h":4,"fund_ann_30d":37.1,"fund_ann_7d":55.3,"fund_cum_30d":3.049,"fund_delta_7d_30d":18.2,"fund_spark":[0.0208,0.1544,0.1439,0.1436,0.0417,-0.0007,0.1345,0.1085,0.0901,0.1652,0.0986,-0.0307,0.1312,0.0276,0.1004,0.1555,-0.0054,-0.0092,-0.0108,0.0784,0.0222,0.0887,0.1113,0.0085,0.0946,0.0206,0.0655,0.1488,0.137,-0.0138],"trend_score":0,"trend_label":"flat","n_settlements_30d":180},{"symbol":"XAUUSDT","category":"TradFi-Commodity","price":85.0034,"vol_24h_m":1240,"px_chg_24h":-1.34,"px_chg_30d":4.2,"fund_interval_h":4,"fund_ann_30d":28.4,"fund_ann_7d":32.1,"fund_cum_30d":2.334,"fund_delta_7d_30d":3.7,"fund_spark":[-0.0474,0.1061,0.0793,0.0043,0.1001,0.0622,0.0374,-0.0462,-0.0331,0.1285,0.1327,0.061,0.1188,0.0684,-0.0185,-0.0226,0.0135,0.1317,0.1111,0.124,0.1317,-0.0061,0.0018,-0.0276,0.1079,0.1287,0.0331,0.076,-0.0172,0.1378],"trend_score":4,"trend_label":"up","n_settlements_30d":180},{"symbol":"OILUSDT","category":"TradFi-Commodity","price":172.9888,"vol_24h_m":124,"px_chg_24h":2.86,"px_chg_30d":-3.8,"fund_interval_h":4,"fund_ann_30d":-8.6,"fund_ann_7d":-12.4,"fund_cum_30d":-0.707,"fund_delta_7d_30d":-3.8,"fund_spark":[0.0464,0.0606,-0.1108,0.0316,-0.0493,0.0705,0.0447,0.0571,0.0464,-0.0623,0.0418,-0.0941,0.0587,0.056,-0.0712,0.0476,-0.0236,-0.0547,0.0434,-0.0702,-0.111,-0.0771,-0.0501,0.0572,0.0777,-0.0599,0.0126,-0.0358,0.0805,-0.0085],"trend_score":-3,"trend_label":"down","n_settlements_30d":180},{"symbol":"BTCUSDT","category":"Crypto-Major","price":187.8778,"vol_24h_m":18400,"px_chg_24h":-2.31,"px_chg_30d":8.3,"fund_interval_h":8,"fund_ann_30d":11.8,"fund_ann_7d":14.2,"fund_cum_30d":0.97,"fund_delta_7d_30d":2.4,"fund_spark":[0.1156,-0.0427,0.1141,-0.0254,-0.0568,0.0085,0.0673,-0.0157,0.0428,0.0238,-0.0014,0.0369,-0.0275,0.0633,-0.0781,0.1067,0.0292,0.0654,0.0699,0.0557,-0.0056,-0.0645,0.0544,-0.0124,-0.0157,0.0912,0.0655,-0.0184,-0.0166,0.0032],"trend_score":3,"trend_label":"up","n_settlements_30d":180},{"symbol":"ETHUSDT","category":"Crypto-Major","price":80.7789,"vol_24h_m":9600,"px_chg_24h":-1.23,"px_chg_30d":14.6,"fund_interval_h":8,"fund_ann_30d":9.4,"fund_ann_7d":7.8,"fund_cum_30d":0.773,"fund_delta_7d_30d":-1.6,"fund_spark":[-0.0574,0.0013,0.1052,0.0526,0.0977,0.0403,-0.0226,0.0268,-0.0827,-0.0254,0.0031,0.0332,0.0481,0.0102,0.0056,-0.0401,0.0118,0.0974,0.0764,-0.0489,-0.0659,0.0203,0.0438,-0.0158,0.0809,0.0674,0.0517,-0.0379,-0.043,-0.0779],"trend_score":4,"trend_label":"up","n_settlements_30d":180},{"symbol":"SOLUSDT","category":"Crypto-Major","price":49.3461,"vol_24h_m":3200,"px_chg_24h":-0.15,"px_chg_30d":18.9,"fund_interval_h":8,"fund_ann_30d":46.2,"fund_ann_7d":62.3,"fund_cum_30d":3.797,"fund_delta_7d_30d":16.1,"fund_spark":[0.1543,-0.0011,0.0673,0.1103,0.0233,0.1237,0.0833,0.0332,0.1156,-0.0145,0.1346,0.1384,0.0057,0.0694,0.0196,0.176,0.088,-0.0056,0.0342,0.1541,0.0757,0.1447,0.1179,0.182,0.1035,0.1744,0.1627,0.1069,0.1282,0.0853],"trend_score":-4,"trend_label":"down","n_settlements_30d":180},{"symbol":"XRPUSDT","category":"Crypto-Major","price":166.1985,"vol_24h_m":2800,"px_chg_24h":0.29,"px_chg_30d":5.6,"fund_interval_h":8,"fund_ann_30d":22.1,"fund_ann_7d":18.4,"fund_cum_30d":1.816,"fund_delta_7d_30d":-3.7,"fund_spark":[0.1198,0.0891,0.0353,-0.0078,-0.0102,0.0679,0.0935,0.0446,0.0657,-0.0047,-0.0441,-0.0025,-0.0053,0.0043,0.0484,-0.032,-0.0134,0.0792,0.0816,-0.0468,0.0219,0.0489,0.0235,-0.0183,0.0244,0.1213,0.0572,0.0795,0.1117,0.0935],"trend_score":2,"trend_label":"flat","n_settlements_30d":180},{"symbol":"1000PEPEUSDT","category":"Crypto-Alt","price":76.386,"vol_24h_m":840,"px_chg_24h":-2.96,"px_chg_30d":42.6,"fund_interval_h":8,"fund_ann_30d":128.4,"fund_ann_7d":184.3,"fund_cum_30d":10.553,"fund_delta_7d_30d":55.9,"fund_spark":[0.2049,0.2852,0.3052,0.3252,0.2183,0.284,0.2437,0.2552,0.1786,0.1784,0.2217,0.1403,0.2017,0.2703,0.2154,0.1675,0.228,0.16,0.259,0.1399,0.2133,0.2474,0.1399,0.2631,0.1617,0.2269,0.1446,0.2103,0.1769,0.1999],"trend_score":5,"trend_label":"up","n_settlements_30d":180},{"symbol":"DOGEUSDT","category":"Crypto-Alt","price":152.3653,"vol_24h_m":1280,"px_chg_24h":-0.73,"px_chg_30d":15.3,"fund_interval_h":8,"fund_ann_30d":24.8,"fund_ann_7d":38.2,"fund_cum_30d":2.038,"fund_delta_7d_30d":13.4,"fund_spark":[0.0957,0.1117,-0.0042,-0.0383,-0.0508,0.0532,0.1453,0.0153,0.0753,0.1015,0.0756,0.0961,0.1352,-0.0148,-0.0506,-0.0242,-0.0295,0.0792,0.0581,-0.0111,0.0852,0.0987,-0.0211,0.0667,0.0949,-0.0318,0.1092,0.1382,-0.0331,-0.0496],"trend_score":3,"trend_label":"up","n_settlements_30d":180},{"symbol":"WIFUSDT","category":"Crypto-Alt","price":62.7355,"vol_24h_m":412,"px_chg_24h":1.06,"px_chg_30d":28.4,"fund_interval_h":8,"fund_ann_30d":96.4,"fund_ann_7d":142.1,"fund_cum_30d":7.923,"fund_delta_7d_30d":45.7,"fund_spark":[0.2677,0.1554,0.2191,0.0913,0.2142,0.2015,0.0965,0.2306,0.2461,0.1962,0.1003,0.2728,0.2326,0.1455,0.1617,0.1502,0.1773,0.1443,0.246,0.2405,0.0972,0.2682,0.2032,0.2418,0.2175,0.1632,0.2228,0.2692,0.1301,0.2377],"trend_score":-3,"trend_label":"down","n_settlements_30d":180},{"symbol":"TLTUSDT","category":"TradFi-Equity","price":107.8655,"vol_24h_m":18,"px_chg_24h":-0.1,"px_chg_30d":-5.8,"fund_interval_h":4,"fund_ann_30d":-22.6,"fund_ann_7d":-31.4,"fund_cum_30d":-1.858,"fund_delta_7d_30d":-8.8,"fund_spark":[-0.0542,0.0049,-0.0876,0.0291,0.0249,-0.1239,0.035,-0.0925,-0.0483,-0.0192,-0.0655,-0.1355,0.0289,-0.1049,-0.0989,0.0183,-0.0732,0.0348,-0.001,-0.086,-0.1392,0.0483,-0.1242,0.0027,-0.0436,0.0104,-0.0032,-0.0121,-0.0431,0.0173],"trend_score":4,"trend_label":"up","n_settlements_30d":180},{"symbol":"ARKKUSDT","category":"TradFi-Equity","price":19.0641,"vol_24h_m":8,"px_chg_24h":-1.67,"px_chg_30d":6.1,"fund_interval_h":4,"fund_ann_30d":-18.2,"fund_ann_7d":-9.4,"fund_cum_30d":-1.496,"fund_delta_7d_30d":8.8,"fund_spark":[0.0051,-0.072,-0.0169,-0.0386,-0.0271,-0.0481,0.0159,-0.0671,0.0073,-0.0791,-0.083,-0.1091,-0.0947,-0.1093,-0.0261,0.0192,-0.0962,-0.09,-0.0364,0.0117,0.0621,-0.0283,-0.0766,-0.1131,-0.0944,-0.0877,-0.0974,-0.1304,-0.0264,-0.0784],"trend_score":3,"trend_label":"up","n_settlements_30d":180},{"symbol":"TRXUSDT","category":"Crypto-Major","price":194.8718,"vol_24h_m":380,"px_chg_24h":0.32,"px_chg_30d":-2.3,"fund_interval_h":8,"fund_ann_30d":-16.4,"fund_ann_7d":-22.8,"fund_cum_30d":-1.348,"fund_delta_7d_30d":-6.4,"fund_spark":[0.0095,-0.1047,0.0437,-0.0318,0.0446,-0.0151,-0.0361,-0.0419,-0.0931,-0.1197,0.0583,-0.0344,0.0345,-0.0498,-0.1151,-0.0041,-0.1192,-0.1001,-0.0174,-0.0692,0.0688,-0.1063,0.0229,-0.0087,0.0282,-0.0848,-0.0254,-0.0399,-0.0414,0.0421],"trend_score":-1,"trend_label":"flat","n_settlements_30d":180}],"headline_symbols":["MSTRUSDT","MUUSDT","COINUSDT","SOLUSDT","WIFUSDT","TLTUSDT","ARKKUSDT"]};
+
+const CAT_LABELS = {
+  'TradFi-Equity': 'TradFi equity',
+  'TradFi-Commodity': 'TradFi commodity',
+  'Crypto-Major': 'Crypto major',
+  'Crypto-Alt': 'Crypto alt',
+};
+const CAT_BADGE_CLASS = {
+  'TradFi-Equity': 'badge-cat-equity',
+  'TradFi-Commodity': 'badge-cat-commodity',
+  'Crypto-Major': 'badge-cat-major',
+  'Crypto-Alt': 'badge-cat-alt',
+};
+const TREND_COLORS = {
+  up:   { bg: 'rgba(15,110,86,0.6)',  border: '#0F6E56' },
+  flat: { bg: 'rgba(127,127,127,0.45)', border: '#5F5E5A' },
+  down: { bg: 'rgba(163,45,45,0.6)',  border: '#A32D2D' },
+};
+const TREND_ICON = { up: 'ti-trending-up', flat: 'ti-trending-flat', down: 'ti-trending-down' };
+
+let DATA = null;
+let CHART = null;
+let CURRENT_CAT = 'all';
+
+function fmtPct(v, sign = true) {
+  if (v === null || v === undefined || Number.isNaN(v)) return '—';
+  const s = sign && v >= 0 ? '+' : '';
+  return s + v.toFixed(1) + '%';
+}
+function fmtVol(v) {
+  if (v === null || v === undefined) return '—';
+  if (v >= 1000) return '$' + (v / 1000).toFixed(1) + 'B';
+  return '$' + Math.round(v) + 'M';
+}
+function fmtTimestamp(iso) {
+  const d = new Date(iso);
+  const opts = { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Singapore' };
+  return d.toLocaleString('en-GB', opts) + ' SGT';
+}
+
+function trendIcon(label) {
+  return `<i class="ti ${TREND_ICON[label]} trend-${label}" style="font-size:16px; vertical-align:-3px;" aria-hidden="true"></i>`;
+}
+
+function scoreBar(score) {
+  const pct = Math.abs(score) / 6 * 50;
+  const cls = score >= 0 ? 'pos' : 'neg';
+  const style = score >= 0
+    ? `width: ${pct}%; left: 50%;`
+    : `width: ${pct}%; right: 50%;`;
+  return `<span class="score-bar"><span class="score-bar-mid"></span><span class="score-bar-fill ${cls}" style="${style}"></span></span>`;
+}
+
+function catBadge(cat) {
+  return `<span class="badge ${CAT_BADGE_CLASS[cat]}">${CAT_LABELS[cat]}</span>`;
+}
+
+function sparkline(values, w = 80, h = 22) {
+  if (!values || !values.length) return '';
+  const min = Math.min(...values, 0);
+  const max = Math.max(...values, 0);
+  const range = max - min || 1;
+  const step = w / Math.max(values.length - 1, 1);
+  const points = values.map((v, i) =>
+    `${(i * step).toFixed(1)},${(h - (v - min) / range * h).toFixed(1)}`
+  ).join(' ');
+  const yZero = h - (0 - min) / range * h;
+  const last = values[values.length - 1];
+  const color = last >= 0 ? '#A32D2D' : '#0F6E56';
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block;">
+    <line x1="0" y1="${yZero}" x2="${w}" y2="${yZero}" stroke="rgba(127,127,127,0.3)" stroke-width="0.5" stroke-dasharray="2,2"/>
+    <polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.2"/>
+  </svg>`;
+}
+
+function direction(r) {
+  if (r.fund_ann_30d > 30 && r.trend_score <= -3) return { action: 'SHORT', cls: 'badge-action-short' };
+  if (r.fund_ann_30d < -15 && r.trend_score >= 3) return { action: 'LONG', cls: 'badge-action-long' };
+  return { action: 'WAIT', cls: 'badge-action-wait' };
+}
+
+function readLabel(r) {
+  if (r.fund_ann_30d > 30 && r.trend_score <= -3) return '<span class="danger" style="font-weight:500;">Short setup</span>';
+  if (r.fund_ann_30d > 30 && r.trend_score >= 3) return '<span class="muted">Wait for roll</span>';
+  if (r.fund_ann_30d < -15 && r.trend_score >= 3) return '<span class="success" style="font-weight:500;">Long setup</span>';
+  if (r.fund_ann_30d < -15 && r.trend_score <= -3) return '<span class="muted">Capitulation ongoing</span>';
+  return '<span class="muted" style="opacity:0.7;">Watch</span>';
+}
+
+function renderKPIs(s) {
+  const html = `
+    <div class="kpi"><p class="kpi-label">Universe scanned</p><p class="kpi-value">${s.universe_total}</p><p class="kpi-hint">${s.universe_liquid} pass liquidity filter</p></div>
+    <div class="kpi danger"><p class="kpi-label">Stretched longs</p><p class="kpi-value">${s.stretched_longs}</p><p class="kpi-hint">funding > +30%/yr</p></div>
+    <div class="kpi danger"><p class="kpi-label">Trend-confirmed shorts</p><p class="kpi-value">${s.trend_confirmed_shorts}</p><p class="kpi-hint">stretched + rolling over</p></div>
+    <div class="kpi success"><p class="kpi-label">Crowded shorts</p><p class="kpi-value">${s.crowded_shorts}</p><p class="kpi-hint">funding < −15%/yr</p></div>
+    <div class="kpi success"><p class="kpi-label">Trend-confirmed longs</p><p class="kpi-value">${s.trend_confirmed_longs}</p><p class="kpi-hint">crowded + reclaiming</p></div>
+    <div class="kpi"><p class="kpi-label">Regime shifts</p><p class="kpi-value">${s.regime_shifts}</p><p class="kpi-hint">|7d − 30d| > 25pp</p></div>
+  `;
+  document.getElementById('kpi-grid').innerHTML = html;
+}
+
+function renderHeadlineTable(rows) {
+  if (!rows.length) {
+    document.getElementById('tbl-headline').innerHTML = '<div class="muted" style="padding: 16px; background: var(--bg-soft); border-radius: 8px;">No trend-confirmed setups today. Funding extremes exist but trends do not yet confirm. Wait for the roll.</div>';
+    return;
+  }
+  const head = `<thead><tr>
+    <th>Action</th><th>Symbol</th><th>Category</th>
+    <th class="num">Funding 30d</th><th class="num">Funding 7d</th>
+    <th class="num">Px Δ30d</th><th class="num">Trend score</th>
+    <th class="center">Trend</th><th class="num">24h vol</th>
+  </tr></thead>`;
+  const body = rows.map(r => {
+    const d = direction(r);
+    return `<tr>
+      <td><span class="badge ${d.cls}">${d.action}</span></td>
+      <td class="sym">${r.symbol}</td>
+      <td>${catBadge(r.category)}</td>
+      <td class="num ${r.fund_ann_30d >= 0 ? 'danger' : 'success'}">${fmtPct(r.fund_ann_30d)}</td>
+      <td class="num muted">${fmtPct(r.fund_ann_7d)}</td>
+      <td class="num">${fmtPct(r.px_chg_30d)}</td>
+      <td class="num">${r.trend_score >= 0 ? '+' : ''}${r.trend_score}${scoreBar(r.trend_score)}</td>
+      <td class="center">${trendIcon(r.trend_label)}</td>
+      <td class="num muted">${fmtVol(r.vol_24h_m)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('tbl-headline').innerHTML = `<table>${head}<tbody>${body}</tbody></table>`;
+}
+
+function renderStdTable(rows, target) {
+  if (!rows.length) {
+    document.getElementById(target).innerHTML = '<div class="muted" style="padding: 16px;">No rows.</div>';
+    return;
+  }
+  const head = `<thead><tr>
+    <th>Symbol</th><th>Category</th>
+    <th class="num">Funding 30d</th><th class="num">Funding 7d</th>
+    <th class="num">Δ 7d−30d</th><th class="num">Px Δ30d</th>
+    <th class="num">Score</th><th class="center">Trend</th>
+    <th>30d funding</th><th>Read</th>
+  </tr></thead>`;
+  const body = rows.map(r => `<tr>
+    <td class="sym">${r.symbol}</td>
+    <td>${catBadge(r.category)}</td>
+    <td class="num ${r.fund_ann_30d >= 0 ? 'danger' : 'success'}">${fmtPct(r.fund_ann_30d)}</td>
+    <td class="num muted">${fmtPct(r.fund_ann_7d)}</td>
+    <td class="num ${r.fund_delta_7d_30d >= 0 ? 'danger' : 'success'}">${fmtPct(r.fund_delta_7d_30d)}</td>
+    <td class="num">${fmtPct(r.px_chg_30d)}</td>
+    <td class="num">${r.trend_score >= 0 ? '+' : ''}${r.trend_score}</td>
+    <td class="center">${trendIcon(r.trend_label)}</td>
+    <td class="spark-cell">${sparkline(r.fund_spark)}</td>
+    <td>${readLabel(r)}</td>
+  </tr>`).join('');
+  document.getElementById(target).innerHTML = `<table>${head}<tbody>${body}</tbody></table>`;
+}
+
+function renderQuadrant(catFilter) {
+  const filtered = catFilter === 'all'
+    ? DATA.rows
+    : DATA.rows.filter(r => r.category === catFilter);
+
+  const datasets = ['up', 'flat', 'down'].map(t => ({
+    label: t,
+    data: filtered.filter(r => r.trend_label === t).map(r => ({
+      x: r.px_chg_30d, y: r.fund_ann_30d, sym: r.symbol, t: r.trend_label, score: r.trend_score
+    })),
+    backgroundColor: TREND_COLORS[t].bg,
+    borderColor: TREND_COLORS[t].border,
+    borderWidth: 1.5,
+    pointRadius: 7,
+    pointHoverRadius: 10,
+  }));
+
+  if (CHART) CHART.destroy();
+  CHART = new Chart(document.getElementById('quadrant'), {
+    type: 'scatter',
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: 16 },
+      scales: {
+        x: { title: { display: true, text: '30d price change (%)' }, grid: { color: 'rgba(127,127,127,0.12)' }, ticks: { callback: v => v + '%' } },
+        y: { title: { display: true, text: '30d annualised funding (%)' }, grid: { color: 'rgba(127,127,127,0.12)' }, ticks: { callback: v => v + '%' } },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${ctx.raw.sym}: f=${fmtPct(ctx.raw.y)}, px=${fmtPct(ctx.raw.x)}, score=${ctx.raw.score >= 0 ? '+' : ''}${ctx.raw.score}`,
+          }
+        }
+      }
+    },
+    plugins: [{
+      id: 'quadrants',
+      beforeDraw(c) {
+        const { ctx, chartArea, scales } = c;
+        const x0 = scales.x.getPixelForValue(0);
+        const y0 = scales.y.getPixelForValue(0);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(127,127,127,0.4)';
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(x0, chartArea.top); ctx.lineTo(x0, chartArea.bottom); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(chartArea.left, y0); ctx.lineTo(chartArea.right, y0); ctx.stroke();
+        ctx.restore();
+        ctx.save();
+        ctx.fillStyle = 'rgba(127,127,127,0.6)';
+        ctx.font = '11px ' + getComputedStyle(document.body).fontFamily;
+        ctx.fillText('Stretched longs', chartArea.right - 110, chartArea.top + 16);
+        ctx.fillText('Capitulation longs', chartArea.left + 8, chartArea.bottom - 8);
+        ctx.fillText('Short squeeze setup', chartArea.right - 130, chartArea.bottom - 8);
+        ctx.fillText('Trapped shorts', chartArea.left + 8, chartArea.top + 16);
+        ctx.restore();
+      }
+    }]
+  });
+}
+
+function renderAll() {
+  document.getElementById('timestamp').innerHTML =
+    `<div>Last updated</div><strong>${fmtTimestamp(DATA.generated_at_utc)}</strong>`;
+
+  // Stale-data warning
+  const ageHours = (Date.now() - new Date(DATA.generated_at_utc).getTime()) / 3_600_000;
+  if (ageHours > 18) {
+    document.getElementById('banner-area').innerHTML =
+      `<div class="stale-banner">Data is ${ageHours.toFixed(0)} hours old — last refresh may have failed. Check GitHub Action logs.</div>`;
+  }
+
+  renderKPIs(DATA.summary);
+
+  const headlineSet = new Set(DATA.headline_symbols);
+  const headline = DATA.rows.filter(r => headlineSet.has(r.symbol))
+    .sort((a, b) => Math.abs(b.fund_ann_30d) - Math.abs(a.fund_ann_30d));
+  renderHeadlineTable(headline);
+
+  const stretched = DATA.rows.filter(r => r.fund_ann_30d > 0)
+    .sort((a, b) => b.fund_ann_30d - a.fund_ann_30d).slice(0, 25);
+  renderStdTable(stretched, 'tbl-stretched');
+
+  const crowded = DATA.rows.filter(r => r.fund_ann_30d < 0)
+    .sort((a, b) => a.fund_ann_30d - b.fund_ann_30d).slice(0, 20);
+  renderStdTable(crowded, 'tbl-crowded');
+
+  const regime = [...DATA.rows]
+    .sort((a, b) => Math.abs(b.fund_delta_7d_30d) - Math.abs(a.fund_delta_7d_30d)).slice(0, 20);
+  renderStdTable(regime, 'tbl-regime');
+
+  renderQuadrant(CURRENT_CAT);
+}
+
+function setupTabs() {
+  document.querySelectorAll('#cat-tabs .tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#cat-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      CURRENT_CAT = btn.dataset.cat;
+      renderQuadrant(CURRENT_CAT);
+    });
+  });
+}
+
+async function loadData() {
+  if (INJECTED_DATA && INJECTED_DATA.rows && INJECTED_DATA.rows.length) {
+    DATA = INJECTED_DATA;
+    renderAll();
+    setupTabs();
+    return;
+  }
+  // Fallback for local dev
+  try {
+    const r = await fetch('data/scan.json', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    DATA = await r.json();
+    renderAll();
+    setupTabs();
+  } catch (e) {
+    document.getElementById('banner-area').innerHTML =
+      `<div class="error-banner">Failed to load data — ${e.message}. Run <code>python scripts/build.py</code> to generate data/scan.json, or wait for the next GitHub Action run.</div>`;
+    document.getElementById('timestamp').innerHTML = '<div class="muted">No data</div>';
+  }
+}
+
+loadData();
+</script>
+
+</body>
+</html>

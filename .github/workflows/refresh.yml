@@ -1,0 +1,63 @@
+name: Refresh funding scanner
+
+on:
+  schedule:
+    # 08:00 SGT = 00:00 UTC, 20:00 SGT = 12:00 UTC
+    - cron: '0 0 * * *'
+    - cron: '0 12 * * *'
+  workflow_dispatch:  # allow manual trigger from Actions tab
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run scan
+        id: scan
+        continue-on-error: true
+        run: |
+          python scripts/build.py
+        env:
+          PYTHONUNBUFFERED: '1'
+
+      - name: Check scan succeeded
+        if: steps.scan.outcome == 'failure'
+        run: |
+          echo "::warning::Scan failed — keeping previous data. Check logs for Binance API issues (rate limits, geo-block, or schema change)."
+          echo "Previous data/scan.json and docs/index.html remain unchanged."
+          exit 0
+
+      - name: Commit refreshed data
+        if: steps.scan.outcome == 'success'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/scan.json docs/index.html
+          if git diff --cached --quiet; then
+            echo "No changes to commit (data identical to previous run)."
+          else
+            git commit -m "data: refresh scan $(date -u '+%Y-%m-%d %H:%M UTC')"
+            git push
+          fi
