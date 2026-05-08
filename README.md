@@ -39,9 +39,11 @@ Each signal contributes −1 / 0 / +1. Score clamped to [−6, +6].
 ```
 template.html                  source of truth, fetch fallback for dev
 scripts/build.py               scans Binance, writes JSON, builds docs/index.html
-data/scan.json                 latest scan output (committed by GitHub Action)
+scripts/local_refresh.ps1      Task Scheduler wrapper: scan + commit + push
+data/scan.json                 latest scan output (committed by local cron)
 docs/index.html                GitHub Pages output (template + injected data)
-.github/workflows/refresh.yml  twice-daily cron + manual trigger
+logs/refresh.log               local refresh log (gitignored)
+.github/workflows/refresh.yml  manual-dispatch only (geo-block on US runners)
 ```
 
 ## Setup
@@ -55,8 +57,34 @@ gh repo create Perp-Funding-Scanner --public --source=. --remote=origin --push
 Settings → Pages → Source: `Deploy from a branch` → Branch: `main` → Folder: `/docs`.
 First deploy will work after the first successful Action run.
 
-### 3. First scan
-Trigger manually under Actions → "Refresh funding scanner" → Run workflow.
+### 3. Register the local refresh
+GitHub Actions runners get HTTP 451 from Binance fapi (US geo-block), so refresh runs from the local Windows machine via Task Scheduler:
+
+```powershell
+$taskName = 'PerpFundingScanner-Refresh'
+$scriptPath = 'C:\dev\Perp-Funding-Scanner\scripts\local_refresh.ps1'
+
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+    -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$scriptPath`""
+
+$triggers = @(
+    (New-ScheduledTaskTrigger -Daily -At '08:00'),
+    (New-ScheduledTaskTrigger -Daily -At '20:00')
+)
+
+$settings = New-ScheduledTaskSettingsSet `
+    -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -MultipleInstances IgnoreNew
+
+$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME `
+    -LogonType Interactive -RunLevel Limited
+
+Register-ScheduledTask -TaskName $taskName -Action $action `
+    -Trigger $triggers -Settings $settings -Principal $principal `
+    -Description 'Twice-daily Perp-Funding-Scanner refresh' -Force
+```
+
+Verify with `Get-ScheduledTask -TaskName 'PerpFundingScanner-Refresh'`. Watch live with `Get-Content logs\refresh.log -Tail 30 -Wait`.
 
 ## Local development
 
@@ -70,9 +98,9 @@ npx serve .                 # then open http://localhost:3000/template.html
 
 ## Refresh schedule
 
-Twice daily at 08:00 SGT and 20:00 SGT. Manual trigger available via Actions tab.
+Twice daily at 08:00 SGT and 20:00 SGT via local Task Scheduler. `StartWhenAvailable` is set, so a missed run (laptop asleep) catches up at next wake within the daily window.
 
-If a scan fails (Binance rate limit, geo-block, schema change), the Action keeps the previous `scan.json` and emits a warning. The dashboard shows a stale-data banner if the data is more than 18 hours old.
+If a scan fails (Binance rate limit, schema change), `local_refresh.ps1` keeps the previous `scan.json`, logs the error to `logs/refresh.log`, and exits non-zero — Task Scheduler will show the failure in its history. The dashboard shows a stale-data banner if the data is more than 18 hours old.
 
 ## Known limitations
 
@@ -86,4 +114,4 @@ If a scan fails (Binance rate limit, geo-block, schema change), the Action keeps
 
 - Add or remove TradFi tickers: edit `TRADFI_EQUITY_BASES` and `TRADFI_COMMODITY_BASES` in `scripts/build.py`.
 - Change thresholds: edit `stretched_long_threshold` / `crowded_short_threshold` / `trend_confirm_score` near the bottom of `build_payload()` in `scripts/build.py`. Update the legend text in `template.html` to match.
-- Change refresh schedule: edit cron lines in `.github/workflows/refresh.yml`.
+- Change refresh schedule: re-run the `Register-ScheduledTask` block above with new `-At` times.

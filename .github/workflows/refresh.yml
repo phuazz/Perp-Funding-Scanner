@@ -1,11 +1,11 @@
 name: Refresh funding scanner
 
+# Binance fapi geo-blocks GitHub Actions' US-hosted runners (HTTP 451).
+# Refresh now runs from local Windows Task Scheduler via scripts/local_refresh.ps1.
+# This workflow is retained for manual dispatch only — useful if a non-US runner
+# (self-hosted, large-runner with regional pinning) is later wired up.
 on:
-  schedule:
-    # 08:00 SGT = 00:00 UTC, 20:00 SGT = 12:00 UTC
-    - cron: '0 0 * * *'
-    - cron: '0 12 * * *'
-  workflow_dispatch:  # allow manual trigger from Actions tab
+  workflow_dispatch:
 
 permissions:
   contents: write
