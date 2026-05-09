@@ -54,14 +54,14 @@ TEMPLATE = REPO_ROOT / "template.html"
 
 TRADFI_COMMODITY_BASES = {
     "XAG", "XAU", "XPT", "XPD",
-    "OIL", "WTI", "BRENT", "NATGAS", "NGAS",
+    "OIL", "WTI", "BRENT", "CL", "NATGAS", "NGAS",
     "COPPER", "URANIUM", "CORN", "WHEAT", "SOY",
     "COCOA", "COFFEE", "SUGAR", "COTTON",
 }
 
 TRADFI_EQUITY_BASES = {
     "NVDA", "AAPL", "MSFT", "GOOGL", "GOOG", "META", "AMZN", "TSLA",
-    "MSTR", "COIN", "HOOD", "AMD", "INTC", "MU", "PLTR", "SMCI",
+    "MSTR", "COIN", "HOOD", "CRCL", "PAYP", "AMD", "INTC", "MU", "PLTR", "SMCI", "SNDK",
     "AVGO", "ORCL", "ADBE", "CRM", "NFLX", "DIS",
     "ASML", "TSM", "SAP", "LRCX", "KLAC", "AMAT", "MRVL", "QCOM", "TXN", "CSCO",
     "BA", "GE", "CAT", "DE", "XOM", "CVX",
@@ -84,10 +84,15 @@ CRYPTO_MAJORS = {
 }
 
 
-def categorise(base: str) -> str:
+def categorise(base: str, contract_type: str = "PERPETUAL") -> str:
     if base in TRADFI_COMMODITY_BASES:
         return "TradFi-Commodity"
     if base in TRADFI_EQUITY_BASES:
+        return "TradFi-Equity"
+    # Defensive: any TRADIFI_PERPETUAL base not in our maintained sets is still
+    # TradFi by Binance's own contract type. Default to equity bucket; promote
+    # to TRADFI_COMMODITY_BASES manually if it is a commodity.
+    if contract_type == "TRADIFI_PERPETUAL":
         return "TradFi-Equity"
     if base in CRYPTO_MAJORS:
         return "Crypto-Major"
@@ -122,7 +127,8 @@ def discover_universe():
     info = get_exchange_info()
     out = []
     for s in info["symbols"]:
-        if s.get("contractType") != "PERPETUAL":
+        ctype = s.get("contractType")
+        if ctype not in ("PERPETUAL", "TRADIFI_PERPETUAL"):
             continue
         if s.get("quoteAsset") != "USDT":
             continue
@@ -131,7 +137,7 @@ def discover_universe():
         out.append({
             "symbol": s["symbol"],
             "base": s["baseAsset"],
-            "category": categorise(s["baseAsset"]),
+            "category": categorise(s["baseAsset"], ctype),
         })
     return out
 
