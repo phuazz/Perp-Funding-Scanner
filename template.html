@@ -95,6 +95,22 @@ td.sym { font-weight: 500; }
 .stale-banner { background: rgba(239,159,39,0.1); color: var(--warning); padding: 12px 16px; border-radius: 8px; margin: 16px 0; font-size: 13px; }
 .footer-note { margin-top: 32px; padding: 16px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; color: var(--text-muted); line-height: 1.7; }
 .footer-note strong { color: var(--text); font-weight: 500; }
+.page-filter { display: flex; gap: 6px; flex-wrap: wrap; margin: 20px 0 0; padding: 10px 14px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; align-items: center; }
+.page-filter-label { font-size: 11px; color: var(--text-muted); margin-right: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+.page-filter .filter-count { font-size: 11px; color: var(--text-faint); margin-left: auto; }
+.dist-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.chart-wrap-sm { position: relative; width: 100%; height: 280px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.chart-caption { font-size: 11px; color: var(--text-muted); margin: 6px 12px 0; text-align: center; }
+@media (max-width: 800px) { .dist-grid { grid-template-columns: 1fr; } }
+.conv { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; white-space: nowrap; }
+.conv-3 { background: rgba(15,110,86,0.15); color: var(--success); }
+.conv-2 { background: rgba(24,95,165,0.12); color: var(--info); }
+.conv-1 { background: var(--bg-soft); color: var(--text-muted); border: 1px solid var(--border); }
+.side-short { color: var(--danger); font-weight: 500; }
+.side-long { color: var(--success); font-weight: 500; }
+.fund-z-cell { font-weight: 500; }
+.dim-cell { color: var(--text-faint); font-size: 11px; }
+.risk-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: rgba(239,159,39,0.12); color: var(--warning); white-space: nowrap; }
 @media (max-width: 800px) {
   .container { padding: 16px; }
   header { flex-direction: column; align-items: flex-start; }
@@ -117,24 +133,46 @@ td.sym { font-weight: 500; }
 
 <div id="banner-area"></div>
 
+<div class="page-filter" id="page-filter" role="tablist" aria-label="Category filter applies to entire dashboard">
+  <span class="page-filter-label">Filter</span>
+  <button class="tab-btn active" data-cat="all">All</button>
+  <button class="tab-btn" data-cat="TradFi">TradFi (combined)</button>
+  <button class="tab-btn" data-cat="TradFi-Equity">TradFi equity</button>
+  <button class="tab-btn" data-cat="TradFi-Commodity">TradFi commodity</button>
+  <button class="tab-btn" data-cat="Crypto-Major">Crypto major</button>
+  <button class="tab-btn" data-cat="Crypto-Alt">Crypto alt</button>
+  <span class="filter-count" id="filter-count"></span>
+</div>
+
 <section>
   <div class="kpi-grid" id="kpi-grid"></div>
 </section>
 
 <section>
-  <h2>Headline setups<span class="hint">extreme funding + trend confirmation — trade these first</span></h2>
-  <div id="tbl-headline"></div>
+  <h2>Recommendations<span class="hint">|fund_z| &gt; 1.0 with trend confirmation — ranked by |fund_z| × trend alignment</span></h2>
+  <div id="tbl-recs"></div>
+</section>
+
+<section>
+  <h2>Funding distribution<span class="hint">raw vs vol-normalised — vol-normalisation reframes "extreme" across asset classes</span></h2>
+  <div class="dist-grid">
+    <div>
+      <div class="chart-wrap-sm">
+        <canvas id="hist-raw" role="img" aria-label="Histogram of raw 30-day annualised funding rate, stacked by category."></canvas>
+      </div>
+      <div class="chart-caption">Raw 30d annualised funding (%/yr). Reference lines at −15 and +30.</div>
+    </div>
+    <div>
+      <div class="chart-wrap-sm">
+        <canvas id="hist-z" role="img" aria-label="Histogram of vol-normalised funding (Sharpe-of-carry), stacked by category."></canvas>
+      </div>
+      <div class="chart-caption">Vol-normalised funding (fund / 10d realised vol). Reference lines at ±1.0.</div>
+    </div>
+  </div>
 </section>
 
 <section>
   <h2>Funding vs price<span class="hint">coloured by trend status — points in the corners with red = best paid-short setups, with green = best paid-long setups</span></h2>
-  <div class="tab-row" id="cat-tabs">
-    <button class="tab-btn active" data-cat="all">All</button>
-    <button class="tab-btn" data-cat="TradFi-Equity">TradFi equity</button>
-    <button class="tab-btn" data-cat="TradFi-Commodity">TradFi commodity</button>
-    <button class="tab-btn" data-cat="Crypto-Major">Crypto major</button>
-    <button class="tab-btn" data-cat="Crypto-Alt">Crypto alt</button>
-  </div>
   <div class="chart-wrap">
     <canvas id="quadrant" role="img" aria-label="Scatter plot of 30-day annualised funding rate versus 30-day price change, with point colour indicating trend direction."></canvas>
   </div>
@@ -165,7 +203,7 @@ td.sym { font-weight: 500; }
 </section>
 
 <div class="footer-note">
-  <strong>How to read this dashboard.</strong> Headline table = stretched funding + trend confirmation = highest conviction. Stretched longs with trend still up = "wait for the roll" — do not fight live momentum even with funding paying you. Funding alone is not a thesis — pair with an independent fundamental view. Position sizing should assume a 2–3 day forced-unwind window for TradFi perps given delisting precedent. Liquidity filter: 24h volume ≥ $5M USDT. Refresh: twice daily at 08:00 and 20:00 SGT via GitHub Action.
+  <strong>How to read this dashboard.</strong> Recommendations = qualifying funding extremes (|fund_z| &gt; 1.0) with trend confirmation, ranked by composite magnitude. <strong>fund_z = annualised funding ÷ 10d realised vol</strong> — interpret as Sharpe-of-carry: how many vol units you are paid (or paying) to hold the perp. Cross-sectionally comparable across XAU at 15% vol and a memecoin at 200% vol; raw funding alone is not. Conviction tier ★★★ = top decile, ★★ = next quartile, ★ = rest of qualifying. Stop = nearest 7d swing in trade-against direction. 14d carry = % of notional captured if held delta-neutral 14 days. Funding alone is not a thesis — pair with an independent fundamental view. Position sizing should assume a 2–3 day forced-unwind window for TradFi perps given delisting precedent. Liquidity filter: 24h volume ≥ $5M USDT. Refresh: twice daily at 08:00 and 20:00 SGT via local Task Scheduler.
 </div>
 
 </div>
@@ -196,18 +234,36 @@ const TREND_COLORS = {
 const TREND_ICON = { up: 'ti-trending-up', flat: 'ti-trending-flat', down: 'ti-trending-down' };
 
 let DATA = null;
-let CHART = null;
+let CHART_QUAD = null, CHART_HIST_RAW = null, CHART_HIST_Z = null;
 let CURRENT_CAT = 'all';
+
+const CAT_BAR_COLORS = {
+  'TradFi-Equity':    'rgba(213,90,48,0.7)',
+  'TradFi-Commodity': 'rgba(239,159,39,0.7)',
+  'Crypto-Major':     'rgba(55,138,221,0.7)',
+  'Crypto-Alt':       'rgba(127,119,221,0.55)',
+};
 
 function fmtPct(v, sign = true) {
   if (v === null || v === undefined || Number.isNaN(v)) return '—';
   const s = sign && v >= 0 ? '+' : '';
   return s + v.toFixed(1) + '%';
 }
+function fmtNum(v, dp = 2, sign = true) {
+  if (v === null || v === undefined || Number.isNaN(v)) return '—';
+  const s = sign && v >= 0 ? '+' : '';
+  return s + v.toFixed(dp);
+}
 function fmtVol(v) {
   if (v === null || v === undefined) return '—';
   if (v >= 1000) return '$' + (v / 1000).toFixed(1) + 'B';
   return '$' + Math.round(v) + 'M';
+}
+function fmtPx(v) {
+  if (v === null || v === undefined || Number.isNaN(v)) return '—';
+  if (Math.abs(v) >= 100) return v.toFixed(2);
+  if (Math.abs(v) >= 1) return v.toFixed(3);
+  return v.toFixed(5);
 }
 function fmtTimestamp(iso) {
   const d = new Date(iso);
@@ -232,6 +288,11 @@ function catBadge(cat) {
   return `<span class="badge ${CAT_BADGE_CLASS[cat]}">${CAT_LABELS[cat]}</span>`;
 }
 
+function convChip(tier) {
+  const stars = '★'.repeat(tier);
+  return `<span class="conv conv-${tier}">${stars}</span>`;
+}
+
 function sparkline(values, w = 80, h = 22) {
   if (!values || !values.length) return '';
   const min = Math.min(...values, 0);
@@ -250,12 +311,6 @@ function sparkline(values, w = 80, h = 22) {
   </svg>`;
 }
 
-function direction(r) {
-  if (r.fund_ann_30d > 30 && r.trend_score <= -3) return { action: 'SHORT', cls: 'badge-action-short' };
-  if (r.fund_ann_30d < -15 && r.trend_score >= 3) return { action: 'LONG', cls: 'badge-action-long' };
-  return { action: 'WAIT', cls: 'badge-action-wait' };
-}
-
 function readLabel(r) {
   if (r.fund_ann_30d > 30 && r.trend_score <= -3) return '<span class="danger" style="font-weight:500;">Short setup</span>';
   if (r.fund_ann_30d > 30 && r.trend_score >= 3) return '<span class="muted">Wait for roll</span>';
@@ -264,54 +319,92 @@ function readLabel(r) {
   return '<span class="muted" style="opacity:0.7;">Watch</span>';
 }
 
-function renderKPIs(s) {
+// Page-level filter: "TradFi" matches both equity and commodity; otherwise exact match.
+function rowMatchesFilter(r, cat) {
+  if (cat === 'all') return true;
+  if (cat === 'TradFi') return r.category === 'TradFi-Equity' || r.category === 'TradFi-Commodity';
+  return r.category === cat;
+}
+function getFiltered() {
+  return DATA.rows.filter(r => rowMatchesFilter(r, CURRENT_CAT));
+}
+function getFilteredRecs() {
+  return (DATA.recommendations || []).filter(r => rowMatchesFilter(r, CURRENT_CAT));
+}
+
+function renderKPIs(filteredRows) {
+  const s = DATA.summary;
+  const f = filteredRows;
+  const fStretched = f.filter(r => r.fund_ann_30d > 30).length;
+  const fCrowded = f.filter(r => r.fund_ann_30d < -15).length;
+  const fStretchedZ = f.filter(r => (r.fund_z_30d ?? 0) > 1.0).length;
+  const fCrowdedZ = f.filter(r => (r.fund_z_30d ?? 0) < -1.0).length;
+  const fRegime = f.filter(r => Math.abs(r.fund_delta_7d_30d) > 25).length;
+  const recsHigh = getFilteredRecs().filter(r => r.conviction === 3).length;
+  const recsCount = getFilteredRecs().length;
+  const slice = CURRENT_CAT === 'all' ? 'all categories' : (CURRENT_CAT === 'TradFi' ? 'TradFi (combined)' : CAT_LABELS[CURRENT_CAT] || CURRENT_CAT);
+
   const html = `
-    <div class="kpi"><p class="kpi-label">Universe scanned</p><p class="kpi-value">${s.universe_total}</p><p class="kpi-hint">${s.universe_liquid} pass liquidity filter</p></div>
-    <div class="kpi danger"><p class="kpi-label">Stretched longs</p><p class="kpi-value">${s.stretched_longs}</p><p class="kpi-hint">funding > +30%/yr</p></div>
-    <div class="kpi danger"><p class="kpi-label">Trend-confirmed shorts</p><p class="kpi-value">${s.trend_confirmed_shorts}</p><p class="kpi-hint">stretched + rolling over</p></div>
-    <div class="kpi success"><p class="kpi-label">Crowded shorts</p><p class="kpi-value">${s.crowded_shorts}</p><p class="kpi-hint">funding < −15%/yr</p></div>
-    <div class="kpi success"><p class="kpi-label">Trend-confirmed longs</p><p class="kpi-value">${s.trend_confirmed_longs}</p><p class="kpi-hint">crowded + reclaiming</p></div>
-    <div class="kpi"><p class="kpi-label">Regime shifts</p><p class="kpi-value">${s.regime_shifts}</p><p class="kpi-hint">|7d − 30d| > 25pp</p></div>
+    <div class="kpi"><p class="kpi-label">Liquid universe</p><p class="kpi-value">${f.length}</p><p class="kpi-hint">${slice} · ${s.universe_total} scanned</p></div>
+    <div class="kpi danger"><p class="kpi-label">Stretched longs</p><p class="kpi-value">${fStretched}</p><p class="kpi-hint">funding > +30%/yr · z>1.0: ${fStretchedZ}</p></div>
+    <div class="kpi success"><p class="kpi-label">Crowded shorts</p><p class="kpi-value">${fCrowded}</p><p class="kpi-hint">funding < −15%/yr · z<−1.0: ${fCrowdedZ}</p></div>
+    <div class="kpi"><p class="kpi-label">Recommendations</p><p class="kpi-value">${recsCount}</p><p class="kpi-hint">★★★ high conviction: ${recsHigh}</p></div>
+    <div class="kpi"><p class="kpi-label">Regime shifts</p><p class="kpi-value">${fRegime}</p><p class="kpi-hint">|7d − 30d| > 25pp</p></div>
   `;
   document.getElementById('kpi-grid').innerHTML = html;
 }
 
-function renderHeadlineTable(rows) {
-  if (!rows.length) {
-    document.getElementById('tbl-headline').innerHTML = '<div class="muted" style="padding: 16px; background: var(--bg-soft); border-radius: 8px;">No trend-confirmed setups today. Funding extremes exist but trends do not yet confirm. Wait for the roll.</div>';
+function renderRecsTable(recs) {
+  const target = document.getElementById('tbl-recs');
+  if (!recs.length) {
+    target.innerHTML = '<div class="muted" style="padding: 16px; background: var(--bg-soft); border-radius: 8px;">No qualifying setups for this filter. Funding extremes may exist but trend has not confirmed (|fund_z| &gt; 1.0 with aligned trend score required).</div>';
     return;
   }
   const head = `<thead><tr>
-    <th>Action</th><th>Symbol</th><th>Category</th>
-    <th class="num">Funding 30d</th><th class="num">Funding 7d</th>
-    <th class="num">Px Δ30d</th><th class="num">Trend score</th>
-    <th class="center">Trend</th><th class="num">24h vol</th>
+    <th class="num">#</th><th>Conviction</th><th>Symbol</th><th>Category</th>
+    <th>Side</th><th>Setup</th>
+    <th class="num">Fund (raw / z)</th>
+    <th class="num">Trend</th>
+    <th class="num">Stop (7d)</th>
+    <th class="num">14d carry</th>
+    <th class="num">24h vol</th>
+    <th>Risk</th>
   </tr></thead>`;
-  const body = rows.map(r => {
-    const d = direction(r);
+  const body = recs.map((r, i) => {
+    const sideCls = r.side === 'Short perp' ? 'side-short' : 'side-long';
+    const fundCls = r.fund_ann_30d >= 0 ? 'danger' : 'success';
+    const zCls = r.fund_z_30d >= 0 ? 'danger' : 'success';
     return `<tr>
-      <td><span class="badge ${d.cls}">${d.action}</span></td>
+      <td class="num muted">${i + 1}</td>
+      <td>${convChip(r.conviction)}</td>
       <td class="sym">${r.symbol}</td>
       <td>${catBadge(r.category)}</td>
-      <td class="num ${r.fund_ann_30d >= 0 ? 'danger' : 'success'}">${fmtPct(r.fund_ann_30d)}</td>
-      <td class="num muted">${fmtPct(r.fund_ann_7d)}</td>
-      <td class="num">${fmtPct(r.px_chg_30d)}</td>
+      <td class="${sideCls}">${r.side}</td>
+      <td class="muted" style="font-size:12px;">${r.setup}</td>
+      <td class="num">
+        <span class="${fundCls}">${fmtPct(r.fund_ann_30d)}</span>
+        <span class="dim-cell"> / </span>
+        <span class="${zCls} fund-z-cell">${fmtNum(r.fund_z_30d, 2)}</span>
+      </td>
       <td class="num">${r.trend_score >= 0 ? '+' : ''}${r.trend_score}${scoreBar(r.trend_score)}</td>
-      <td class="center">${trendIcon(r.trend_label)}</td>
+      <td class="num">${fmtPx(r.stop_price)}</td>
+      <td class="num muted">${r.carry_pct_14d.toFixed(2)}%</td>
       <td class="num muted">${fmtVol(r.vol_24h_m)}</td>
+      <td>${r.risk_note ? `<span class="risk-tag">${r.risk_note}</span>` : ''}</td>
     </tr>`;
   }).join('');
-  document.getElementById('tbl-headline').innerHTML = `<table>${head}<tbody>${body}</tbody></table>`;
+  target.innerHTML = `<table>${head}<tbody>${body}</tbody></table>`;
 }
 
 function renderStdTable(rows, target) {
   if (!rows.length) {
-    document.getElementById(target).innerHTML = '<div class="muted" style="padding: 16px;">No rows.</div>';
+    document.getElementById(target).innerHTML = '<div class="muted" style="padding: 16px;">No rows for this filter.</div>';
     return;
   }
   const head = `<thead><tr>
     <th>Symbol</th><th>Category</th>
-    <th class="num">Funding 30d</th><th class="num">Funding 7d</th>
+    <th class="num">Funding 30d</th><th class="num">Fund z</th>
+    <th class="num">Vol 10d</th>
     <th class="num">Δ 7d−30d</th><th class="num">Px Δ30d</th>
     <th class="num">Score</th><th class="center">Trend</th>
     <th>30d funding</th><th>Read</th>
@@ -320,7 +413,8 @@ function renderStdTable(rows, target) {
     <td class="sym">${r.symbol}</td>
     <td>${catBadge(r.category)}</td>
     <td class="num ${r.fund_ann_30d >= 0 ? 'danger' : 'success'}">${fmtPct(r.fund_ann_30d)}</td>
-    <td class="num muted">${fmtPct(r.fund_ann_7d)}</td>
+    <td class="num fund-z-cell ${(r.fund_z_30d ?? 0) >= 0 ? 'danger' : 'success'}">${fmtNum(r.fund_z_30d, 2)}</td>
+    <td class="num muted">${r.realised_vol_10d_ann ? r.realised_vol_10d_ann.toFixed(0) + '%' : '—'}</td>
     <td class="num ${r.fund_delta_7d_30d >= 0 ? 'danger' : 'success'}">${fmtPct(r.fund_delta_7d_30d)}</td>
     <td class="num">${fmtPct(r.px_chg_30d)}</td>
     <td class="num">${r.trend_score >= 0 ? '+' : ''}${r.trend_score}</td>
@@ -331,14 +425,118 @@ function renderStdTable(rows, target) {
   document.getElementById(target).innerHTML = `<table>${head}<tbody>${body}</tbody></table>`;
 }
 
-function renderQuadrant(catFilter) {
-  const filtered = catFilter === 'all'
-    ? DATA.rows
-    : DATA.rows.filter(r => r.category === catFilter);
+// Histogram: bin `field` for filteredRows, return Chart.js datasets stacked by category.
+function buildHistDatasets(rows, field, binEdges) {
+  const cats = Object.keys(CAT_BAR_COLORS);
+  const counts = {};
+  cats.forEach(c => counts[c] = new Array(binEdges.length - 1).fill(0));
+  rows.forEach(r => {
+    const v = r[field];
+    if (v === null || v === undefined || Number.isNaN(v)) return;
+    let idx = -1;
+    for (let i = 0; i < binEdges.length - 1; i++) {
+      if (v >= binEdges[i] && v < binEdges[i + 1]) { idx = i; break; }
+    }
+    if (idx === -1 && v >= binEdges[binEdges.length - 1]) idx = binEdges.length - 2;
+    if (idx === -1 && v < binEdges[0]) idx = 0;
+    if (counts[r.category]) counts[r.category][idx] += 1;
+  });
+  return cats.map(c => ({
+    label: CAT_LABELS[c],
+    data: counts[c],
+    backgroundColor: CAT_BAR_COLORS[c],
+    borderWidth: 0,
+    stack: 'cat',
+    categoryPercentage: 0.95,
+    barPercentage: 0.95,
+  }));
+}
 
+function makeHistChart(canvasId, rows, field, binEdges, refLines, xLabel) {
+  const labels = binEdges.slice(0, -1).map((lo, i) => {
+    const hi = binEdges[i + 1];
+    return ((lo + hi) / 2).toFixed(field === 'fund_z_30d' ? 1 : 0);
+  });
+  const datasets = buildHistDatasets(rows, field, binEdges);
+  return new Chart(document.getElementById(canvasId), {
+    type: 'bar',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: 8 },
+      scales: {
+        x: { stacked: true, title: { display: true, text: xLabel, font: { size: 11 } }, grid: { display: false }, ticks: { font: { size: 10 } } },
+        y: { stacked: true, title: { display: true, text: 'count', font: { size: 11 } }, grid: { color: 'rgba(127,127,127,0.1)' }, ticks: { precision: 0, font: { size: 10 } } },
+      },
+      plugins: {
+        legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 10 }, padding: 8 } },
+        tooltip: {
+          callbacks: {
+            title: (items) => {
+              const i = items[0].dataIndex;
+              return `${binEdges[i].toFixed(field === 'fund_z_30d' ? 1 : 0)} to ${binEdges[i + 1].toFixed(field === 'fund_z_30d' ? 1 : 0)}`;
+            },
+          }
+        }
+      }
+    },
+    plugins: [{
+      id: 'reflines',
+      afterDatasetsDraw(c) {
+        const { ctx, chartArea, scales } = c;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(163,45,45,0.55)';
+        ctx.setLineDash([4, 3]);
+        ctx.lineWidth = 1.2;
+        ctx.font = '10px ' + getComputedStyle(document.body).fontFamily;
+        ctx.fillStyle = 'rgba(163,45,45,0.7)';
+        refLines.forEach(({ value, label }) => {
+          // Find nearest bin edge for placement.
+          let pixel = null;
+          for (let i = 0; i < binEdges.length - 1; i++) {
+            if (value >= binEdges[i] && value <= binEdges[i + 1]) {
+              const frac = (value - binEdges[i]) / (binEdges[i + 1] - binEdges[i]);
+              const bandLeft = scales.x.getPixelForValue(i) - scales.x.getPixelForValue(0.5) + scales.x.getPixelForValue(0);
+              // Simpler: use category-axis pixel of the bin centre, offset by frac of band width.
+              const pxLeft = scales.x.getPixelForValue(i);
+              const pxRight = scales.x.getPixelForValue(i + 1) || (pxLeft + (scales.x.getPixelForValue(1) - scales.x.getPixelForValue(0)));
+              pixel = pxLeft + (pxRight - pxLeft) * frac;
+              break;
+            }
+          }
+          if (pixel === null) return;
+          ctx.beginPath();
+          ctx.moveTo(pixel, chartArea.top);
+          ctx.lineTo(pixel, chartArea.bottom);
+          ctx.stroke();
+          ctx.fillText(label, pixel + 4, chartArea.top + 12);
+        });
+        ctx.restore();
+      }
+    }]
+  });
+}
+
+function renderDistributions(filteredRows) {
+  const rawBins = [];
+  for (let v = -60; v <= 130; v += 10) rawBins.push(v);
+  const zBins = [];
+  for (let v = -3; v <= 3.05; v += 0.3) zBins.push(parseFloat(v.toFixed(2)));
+
+  if (CHART_HIST_RAW) CHART_HIST_RAW.destroy();
+  if (CHART_HIST_Z) CHART_HIST_Z.destroy();
+  CHART_HIST_RAW = makeHistChart('hist-raw', filteredRows, 'fund_ann_30d', rawBins,
+    [{ value: -15, label: '−15' }, { value: 30, label: '+30' }],
+    'Funding 30d annualised (%/yr)');
+  CHART_HIST_Z = makeHistChart('hist-z', filteredRows, 'fund_z_30d', zBins,
+    [{ value: -1.0, label: '−1.0σ' }, { value: 1.0, label: '+1.0σ' }],
+    'Fund / 10d realised vol');
+}
+
+function renderQuadrant(filteredRows) {
   const datasets = ['up', 'flat', 'down'].map(t => ({
     label: t,
-    data: filtered.filter(r => r.trend_label === t).map(r => ({
+    data: filteredRows.filter(r => r.trend_label === t).map(r => ({
       x: r.px_chg_30d, y: r.fund_ann_30d, sym: r.symbol, t: r.trend_label, score: r.trend_score
     })),
     backgroundColor: TREND_COLORS[t].bg,
@@ -348,8 +546,8 @@ function renderQuadrant(catFilter) {
     pointHoverRadius: 10,
   }));
 
-  if (CHART) CHART.destroy();
-  CHART = new Chart(document.getElementById('quadrant'), {
+  if (CHART_QUAD) CHART_QUAD.destroy();
+  CHART_QUAD = new Chart(document.getElementById('quadrant'), {
     type: 'scatter',
     data: { datasets },
     options: {
@@ -393,46 +591,50 @@ function renderQuadrant(catFilter) {
   });
 }
 
+function renderForCurrentFilter() {
+  const filtered = getFiltered();
+  document.getElementById('filter-count').textContent =
+    `${filtered.length} of ${DATA.rows.length} symbols`;
+
+  renderKPIs(filtered);
+  renderRecsTable(getFilteredRecs());
+
+  const stretched = filtered.filter(r => r.fund_ann_30d > 0)
+    .sort((a, b) => b.fund_ann_30d - a.fund_ann_30d).slice(0, 25);
+  renderStdTable(stretched, 'tbl-stretched');
+
+  const crowded = filtered.filter(r => r.fund_ann_30d < 0)
+    .sort((a, b) => a.fund_ann_30d - b.fund_ann_30d).slice(0, 20);
+  renderStdTable(crowded, 'tbl-crowded');
+
+  const regime = [...filtered]
+    .sort((a, b) => Math.abs(b.fund_delta_7d_30d) - Math.abs(a.fund_delta_7d_30d)).slice(0, 20);
+  renderStdTable(regime, 'tbl-regime');
+
+  renderDistributions(filtered);
+  renderQuadrant(filtered);
+}
+
 function renderAll() {
   document.getElementById('timestamp').innerHTML =
     `<div>Last updated</div><strong>${fmtTimestamp(DATA.generated_at_utc)}</strong>`;
 
-  // Stale-data warning
   const ageHours = (Date.now() - new Date(DATA.generated_at_utc).getTime()) / 3_600_000;
   if (ageHours > 18) {
     document.getElementById('banner-area').innerHTML =
-      `<div class="stale-banner">Data is ${ageHours.toFixed(0)} hours old — last refresh may have failed. Check GitHub Action logs.</div>`;
+      `<div class="stale-banner">Data is ${ageHours.toFixed(0)} hours old — last refresh may have failed. Check Task Scheduler logs (logs/refresh.log).</div>`;
   }
 
-  renderKPIs(DATA.summary);
-
-  const headlineSet = new Set(DATA.headline_symbols);
-  const headline = DATA.rows.filter(r => headlineSet.has(r.symbol))
-    .sort((a, b) => Math.abs(b.fund_ann_30d) - Math.abs(a.fund_ann_30d));
-  renderHeadlineTable(headline);
-
-  const stretched = DATA.rows.filter(r => r.fund_ann_30d > 0)
-    .sort((a, b) => b.fund_ann_30d - a.fund_ann_30d).slice(0, 25);
-  renderStdTable(stretched, 'tbl-stretched');
-
-  const crowded = DATA.rows.filter(r => r.fund_ann_30d < 0)
-    .sort((a, b) => a.fund_ann_30d - b.fund_ann_30d).slice(0, 20);
-  renderStdTable(crowded, 'tbl-crowded');
-
-  const regime = [...DATA.rows]
-    .sort((a, b) => Math.abs(b.fund_delta_7d_30d) - Math.abs(a.fund_delta_7d_30d)).slice(0, 20);
-  renderStdTable(regime, 'tbl-regime');
-
-  renderQuadrant(CURRENT_CAT);
+  renderForCurrentFilter();
 }
 
 function setupTabs() {
-  document.querySelectorAll('#cat-tabs .tab-btn').forEach(btn => {
+  document.querySelectorAll('#page-filter .tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('#cat-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('#page-filter .tab-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       CURRENT_CAT = btn.dataset.cat;
-      renderQuadrant(CURRENT_CAT);
+      renderForCurrentFilter();
     });
   });
 }
@@ -444,7 +646,6 @@ async function loadData() {
     setupTabs();
     return;
   }
-  // Fallback for local dev
   try {
     const r = await fetch('data/scan.json', { cache: 'no-store' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -453,7 +654,7 @@ async function loadData() {
     setupTabs();
   } catch (e) {
     document.getElementById('banner-area').innerHTML =
-      `<div class="error-banner">Failed to load data — ${e.message}. Run <code>python scripts/build.py</code> to generate data/scan.json, or wait for the next GitHub Action run.</div>`;
+      `<div class="error-banner">Failed to load data — ${e.message}. Run <code>python scripts/build.py</code> to generate data/scan.json.</div>`;
     document.getElementById('timestamp').innerHTML = '<div class="muted">No data</div>';
   }
 }

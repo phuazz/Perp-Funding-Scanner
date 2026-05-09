@@ -337,19 +337,35 @@ def scan(verbose=True):
             price = float(t.get("lastPrice", 0))
             chg_24h = float(t.get("priceChangePercent", 0))
 
-            # Klines for trend score + 30d price change
+            # Klines for trend score + 30d price change + realised vol + 7d hi/lo
             score = 0
             sub = {}
             chg_30d = float("nan")
+            rv_10d_ann = float("nan")
+            px_7d_high = None
+            px_7d_low = None
             try:
                 klines = get_klines_60d(sym)
                 if klines and len(klines) >= 30:
                     closes = [float(k[4]) for k in klines]
+                    highs = [float(k[2]) for k in klines]
+                    lows = [float(k[3]) for k in klines]
                     score, sub = compute_trend_score(closes)
                     if len(closes) >= 31:
                         chg_30d = (closes[-1] / closes[-31] - 1) * 100
+                    if len(closes) >= 11:
+                        rets = pd.Series(closes[-11:]).pct_change().dropna()
+                        if len(rets) >= 5 and rets.std() > 0:
+                            rv_10d_ann = float(rets.std() * (365 ** 0.5) * 100)
+                    if len(highs) >= 7:
+                        px_7d_high = round(max(highs[-7:]), 6)
+                        px_7d_low = round(min(lows[-7:]), 6)
             except Exception:
                 pass
+
+            # Vol-normalised funding (Sharpe-of-carry). Cross-sectionally comparable.
+            fund_z_30d = round(f30 / rv_10d_ann, 3) if rv_10d_ann and not math.isnan(rv_10d_ann) else None
+            fund_z_7d = round(f7 / rv_10d_ann, 3) if rv_10d_ann and not math.isnan(rv_10d_ann) else None
 
             rows.append({
                 "symbol": sym,
@@ -358,12 +374,17 @@ def scan(verbose=True):
                 "vol_24h_m": round(vol_m, 2),
                 "px_chg_24h": round(chg_24h, 2),
                 "px_chg_30d": round(chg_30d, 2) if not math.isnan(chg_30d) else None,
+                "px_7d_high": px_7d_high,
+                "px_7d_low": px_7d_low,
                 "fund_interval_h": interval_h,
                 "fund_ann_30d": round(f30, 2),
                 "fund_ann_7d": round(f7, 2),
                 "fund_cum_30d": round(f30_cum, 3),
                 "fund_delta_7d_30d": round(f7 - f30, 2),
                 "fund_spark": [round(r * 100, 4) for r in spark],
+                "realised_vol_10d_ann": round(rv_10d_ann, 2) if not math.isnan(rv_10d_ann) else None,
+                "fund_z_30d": fund_z_30d,
+                "fund_z_7d": fund_z_7d,
                 "trend_score": score,
                 "trend_label": trend_label(score),
                 "n_settlements_30d": len(d30),
@@ -380,25 +401,89 @@ def scan(verbose=True):
     return rows
 
 
+FUND_Z_QUALIFY = 1.0       # |fund_z_30d| above this enters the rec table
+CARRY_HOLD_DAYS = 14       # implied 14d delta-neutral carry
+TOPLIST_LIMIT = 20         # cap on rec rows shown
+
+
+def _risk_note(cat, vol_m):
+    if cat in ("TradFi-Equity", "TradFi-Commodity"):
+        return "TradFi delisting risk"
+    if cat == "Crypto-Major":
+        return "Major OI"
+    if vol_m < 20:
+        return "Low-liquidity tail"
+    return ""
+
+
+def build_recommendations(liquid):
+    qualified = []
+    for r in liquid.to_dict(orient="records"):
+        fz = r.get("fund_z_30d")
+        ts = r.get("trend_score") or 0
+        if fz is None:
+            continue
+        if abs(fz) < FUND_Z_QUALIFY:
+            continue
+        # Direction: short paid carry if positive z + negative trend, long if negative z + positive trend.
+        if fz > 0 and ts < 0:
+            side, setup = "Short perp", "Stretched long topping"
+        elif fz < 0 and ts > 0:
+            side, setup = "Long perp", "Crowded short reclaim"
+        else:
+            continue  # funding extreme but trend neutral or aligned with crowd: no rec
+        magnitude = abs(fz) * max(abs(ts) / 6.0, 0.5)
+        # Stop: nearest 7d swing in the trade-against direction.
+        stop = r.get("px_7d_high") if side == "Short perp" else r.get("px_7d_low")
+        # Carry: % of notional captured if held delta-neutral CARRY_HOLD_DAYS days.
+        carry_pct = round(abs(r["fund_ann_30d"]) * CARRY_HOLD_DAYS / 365.0, 2)
+        qualified.append({
+            "symbol": r["symbol"],
+            "category": r["category"],
+            "side": side,
+            "setup": setup,
+            "magnitude": round(magnitude, 3),
+            "fund_ann_30d": r["fund_ann_30d"],
+            "fund_z_30d": fz,
+            "realised_vol_10d_ann": r.get("realised_vol_10d_ann"),
+            "trend_score": ts,
+            "trend_label": r["trend_label"],
+            "price": r["price"],
+            "stop_price": stop,
+            "carry_pct_14d": carry_pct,
+            "vol_24h_m": r["vol_24h_m"],
+            "risk_note": _risk_note(r["category"], r["vol_24h_m"]),
+        })
+
+    qualified.sort(key=lambda x: x["magnitude"], reverse=True)
+
+    # Conviction: tertile by magnitude among qualifying.
+    n = len(qualified)
+    if n:
+        top_n = max(1, n // 10)
+        mid_n = max(1, n // 4)
+        for i, rec in enumerate(qualified):
+            if i < top_n:
+                rec["conviction"] = 3
+            elif i < top_n + mid_n:
+                rec["conviction"] = 2
+            else:
+                rec["conviction"] = 1
+            rec["rank"] = i + 1
+
+    return qualified[:TOPLIST_LIMIT]
+
+
 def build_payload(rows):
     df = pd.DataFrame(rows)
 
     # Liquid universe
     liquid = df[df["vol_24h_m"] >= MIN_VOLUME_USDT_M].copy()
 
-    # Headline setups: extreme funding + trend confirmation
-    def is_headline(r):
-        if r["fund_ann_30d"] > 30 and r["trend_score"] <= -3:
-            return True
-        if r["fund_ann_30d"] < -15 and r["trend_score"] >= 3:
-            return True
-        return False
+    recommendations = build_recommendations(liquid)
 
-    liquid["headline"] = liquid.apply(is_headline, axis=1)
-
-    headline = liquid[liquid["headline"]].sort_values(
-        "fund_ann_30d", key=lambda s: s.abs(), ascending=False
-    ).head(20)
+    # Legacy headline-symbols list, kept for back-compat with anything reading scan.json.
+    headline_syms = [r["symbol"] for r in recommendations if r.get("conviction", 0) >= 2]
 
     summary = {
         "universe_total": int(len(df)),
@@ -414,6 +499,8 @@ def build_payload(rows):
         "regime_shifts": int(
             (liquid["fund_delta_7d_30d"].abs() > 25).sum()
         ),
+        "recommendations_total": len(recommendations),
+        "recommendations_high_conviction": sum(1 for r in recommendations if r.get("conviction") == 3),
     }
 
     payload = {
@@ -424,10 +511,13 @@ def build_payload(rows):
             "stretched_long_threshold": 30,
             "crowded_short_threshold": -15,
             "trend_confirm_score": 3,
+            "fund_z_qualify": FUND_Z_QUALIFY,
+            "carry_hold_days": CARRY_HOLD_DAYS,
         },
         "summary": summary,
-        "rows": liquid.drop(columns=["headline"]).to_dict(orient="records"),
-        "headline_symbols": headline["symbol"].tolist(),
+        "rows": liquid.to_dict(orient="records"),
+        "recommendations": recommendations,
+        "headline_symbols": headline_syms,
     }
     return payload
 
