@@ -198,12 +198,12 @@ td.sym { font-weight: 500; }
 </section>
 
 <section>
-  <h2>Regime shifts<span class="hint">7d funding minus 30d funding — fresh crowding (top) or unwinding (bottom)</span></h2>
+  <h2>Positioning acceleration<span class="hint">vol-normalised fund_z_7d − fund_z_30d — fresh crowdedness (top), most vulnerable to mean reversion</span></h2>
   <div id="tbl-regime"></div>
 </section>
 
 <div class="footer-note">
-  <strong>How to read this dashboard.</strong> Recommendations = qualifying funding extremes (|fund_z| &gt; 1.0) with trend confirmation, ranked by composite magnitude. <strong>fund_z = annualised funding ÷ 10d realised vol</strong> — interpret as Sharpe-of-carry: how many vol units you are paid (or paying) to hold the perp. Cross-sectionally comparable across XAU at 15% vol and a memecoin at 200% vol; raw funding alone is not. Conviction tier ★★★ = top decile, ★★ = next quartile, ★ = rest of qualifying. Stop = nearest 7d swing in trade-against direction. 14d carry = % of notional captured if held delta-neutral 14 days. Funding alone is not a thesis — pair with an independent fundamental view. Position sizing should assume a 2–3 day forced-unwind window for TradFi perps given delisting precedent. Liquidity filter: 24h volume ≥ $5M USDT. Refresh: twice daily at 08:00 and 20:00 SGT via local Task Scheduler.
+  <strong>How to read this dashboard.</strong> Recommendations = qualifying funding extremes (|fund_z| &gt; 1.0) with trend confirmation, ranked by <code>|fund_z| × max(|trend|/6, 0.5) × (1 + |Δz|)</code>. <strong>fund_z = annualised funding ÷ 10d realised vol</strong> — Sharpe-of-carry, cross-sectionally comparable across XAU at 15% vol and a memecoin at 200% vol. <strong>Δz = fund_z_7d − fund_z_30d</strong> — vol-normalised positioning acceleration; bigger |Δz| means crowdedness is fresh and vulnerable to mean reversion (vs chronic / structural). Conviction tier ★★★ = top decile, ★★ = next quartile, ★ = rest of qualifying. Stop = nearest 7d swing in trade-against direction. 14d carry = % of notional captured if held delta-neutral 14 days. Funding alone is not a thesis — pair with an independent fundamental view. Position sizing should assume a 2–3 day forced-unwind window for TradFi perps given delisting precedent. Liquidity filter: 24h volume ≥ $5M USDT. Refresh: twice daily at 08:00 and 20:00 SGT via local Task Scheduler.
 </div>
 
 </div>
@@ -364,6 +364,7 @@ function renderRecsTable(recs) {
     <th class="num">#</th><th>Conviction</th><th>Symbol</th><th>Category</th>
     <th>Side</th><th>Setup</th>
     <th class="num">Fund (raw / z)</th>
+    <th class="num" title="Vol-normalised acceleration of positioning over the last 7d vs the 30d baseline. Bigger |value| = fresher crowdedness, more vulnerable to mean reversion.">Δz</th>
     <th class="num">Trend</th>
     <th class="num">Stop (7d)</th>
     <th class="num">14d carry</th>
@@ -374,6 +375,8 @@ function renderRecsTable(recs) {
     const sideCls = r.side === 'Short perp' ? 'side-short' : 'side-long';
     const fundCls = r.fund_ann_30d >= 0 ? 'danger' : 'success';
     const zCls = r.fund_z_30d >= 0 ? 'danger' : 'success';
+    const dz = r.fund_z_delta;
+    const dzCls = dz === null || dz === undefined ? 'muted' : (dz >= 0 ? 'danger' : 'success');
     return `<tr>
       <td class="num muted">${i + 1}</td>
       <td>${convChip(r.conviction)}</td>
@@ -386,6 +389,7 @@ function renderRecsTable(recs) {
         <span class="dim-cell"> / </span>
         <span class="${zCls} fund-z-cell">${fmtNum(r.fund_z_30d, 2)}</span>
       </td>
+      <td class="num fund-z-cell ${dzCls}">${fmtNum(dz, 2)}</td>
       <td class="num">${r.trend_score >= 0 ? '+' : ''}${r.trend_score}${scoreBar(r.trend_score)}</td>
       <td class="num">${fmtPx(r.stop_price)}</td>
       <td class="num muted">${r.carry_pct_14d.toFixed(2)}%</td>
@@ -405,7 +409,9 @@ function renderStdTable(rows, target) {
     <th>Symbol</th><th>Category</th>
     <th class="num">Funding 30d</th><th class="num">Fund z</th>
     <th class="num">Vol 10d</th>
-    <th class="num">Δ 7d−30d</th><th class="num">Px Δ30d</th>
+    <th class="num">Δ 7d−30d</th>
+    <th class="num" title="Vol-normalised positioning acceleration: fund_z_7d − fund_z_30d. Bigger |value| = fresher crowdedness.">Δz</th>
+    <th class="num">Px Δ30d</th>
     <th class="num">Score</th><th class="center">Trend</th>
     <th>30d funding</th><th>Read</th>
   </tr></thead>`;
@@ -416,6 +422,7 @@ function renderStdTable(rows, target) {
     <td class="num fund-z-cell ${(r.fund_z_30d ?? 0) >= 0 ? 'danger' : 'success'}">${fmtNum(r.fund_z_30d, 2)}</td>
     <td class="num muted">${r.realised_vol_10d_ann ? r.realised_vol_10d_ann.toFixed(0) + '%' : '—'}</td>
     <td class="num ${r.fund_delta_7d_30d >= 0 ? 'danger' : 'success'}">${fmtPct(r.fund_delta_7d_30d)}</td>
+    <td class="num fund-z-cell ${(r.fund_z_delta ?? 0) >= 0 ? 'danger' : 'success'}">${fmtNum(r.fund_z_delta, 2)}</td>
     <td class="num">${fmtPct(r.px_chg_30d)}</td>
     <td class="num">${r.trend_score >= 0 ? '+' : ''}${r.trend_score}</td>
     <td class="center">${trendIcon(r.trend_label)}</td>
@@ -608,7 +615,8 @@ function renderForCurrentFilter() {
   renderStdTable(crowded, 'tbl-crowded');
 
   const regime = [...filtered]
-    .sort((a, b) => Math.abs(b.fund_delta_7d_30d) - Math.abs(a.fund_delta_7d_30d)).slice(0, 20);
+    .filter(r => r.fund_z_delta !== null && r.fund_z_delta !== undefined)
+    .sort((a, b) => Math.abs(b.fund_z_delta) - Math.abs(a.fund_z_delta)).slice(0, 20);
   renderStdTable(regime, 'tbl-regime');
 
   renderDistributions(filtered);

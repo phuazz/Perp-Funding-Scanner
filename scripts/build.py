@@ -366,6 +366,9 @@ def scan(verbose=True):
             # Vol-normalised funding (Sharpe-of-carry). Cross-sectionally comparable.
             fund_z_30d = round(f30 / rv_10d_ann, 3) if rv_10d_ann and not math.isnan(rv_10d_ann) else None
             fund_z_7d = round(f7 / rv_10d_ann, 3) if rv_10d_ann and not math.isnan(rv_10d_ann) else None
+            # Freshness: vol-normalised acceleration of positioning over the last week vs the
+            # 30d structural baseline. Mean-reversion edge concentrates where this is large.
+            fund_z_delta = round(fund_z_7d - fund_z_30d, 3) if (fund_z_7d is not None and fund_z_30d is not None) else None
 
             rows.append({
                 "symbol": sym,
@@ -385,6 +388,7 @@ def scan(verbose=True):
                 "realised_vol_10d_ann": round(rv_10d_ann, 2) if not math.isnan(rv_10d_ann) else None,
                 "fund_z_30d": fund_z_30d,
                 "fund_z_7d": fund_z_7d,
+                "fund_z_delta": fund_z_delta,
                 "trend_score": score,
                 "trend_label": trend_label(score),
                 "n_settlements_30d": len(d30),
@@ -421,6 +425,7 @@ def build_recommendations(liquid):
     for r in liquid.to_dict(orient="records"):
         fz = r.get("fund_z_30d")
         ts = r.get("trend_score") or 0
+        fz_delta = r.get("fund_z_delta")
         if fz is None:
             continue
         if abs(fz) < FUND_Z_QUALIFY:
@@ -432,7 +437,11 @@ def build_recommendations(liquid):
             side, setup = "Long perp", "Crowded short reclaim"
         else:
             continue  # funding extreme but trend neutral or aligned with crowd: no rec
-        magnitude = abs(fz) * max(abs(ts) / 6.0, 0.5)
+        # Composite: structural extremity x trend confirmation x freshness multiplier.
+        # Freshness elevates positioning that has accelerated past its 30d baseline (vulnerable to
+        # mean reversion) above chronic structurals at the same fund_z level.
+        freshness_mult = 1.0 + abs(fz_delta) if fz_delta is not None else 1.0
+        magnitude = abs(fz) * max(abs(ts) / 6.0, 0.5) * freshness_mult
         # Stop: nearest 7d swing in the trade-against direction.
         stop = r.get("px_7d_high") if side == "Short perp" else r.get("px_7d_low")
         # Carry: % of notional captured if held delta-neutral CARRY_HOLD_DAYS days.
@@ -445,6 +454,7 @@ def build_recommendations(liquid):
             "magnitude": round(magnitude, 3),
             "fund_ann_30d": r["fund_ann_30d"],
             "fund_z_30d": fz,
+            "fund_z_delta": fz_delta,
             "realised_vol_10d_ann": r.get("realised_vol_10d_ann"),
             "trend_score": ts,
             "trend_label": r["trend_label"],
