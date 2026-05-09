@@ -124,6 +124,84 @@ def test_cash_session_alignment_with_category() -> None:
           f"first: {bad_crypto[:3]}")
 
 
+VALID_HOLDING_WINDOWS = {"Tactical 1-5d", "Swing 5-20d", "Strategic 20d+"}
+
+
+def test_recommendation_phase2_fields() -> None:
+    """Every rec record carries the actionable-setup fields used by the panel."""
+    if not SCAN_PATH.exists():
+        return
+    payload = json.loads(SCAN_PATH.read_text(encoding="utf-8"))
+    recs = payload.get("recommendations") or []
+    if not recs:
+        # Empty rec set is valid; nothing to check here.
+        return
+    required = {
+        "stop_pct", "stop_vol_multiple", "holding_window",
+        "entry_trigger_text", "entry_trigger_met", "carry_scenarios",
+        "px_7d_ma",
+    }
+    bad_missing = []
+    bad_holding = []
+    bad_carry = []
+    bad_trigger = []
+    for r in recs:
+        sym = r.get("symbol", "?")
+        miss = required - set(r.keys())
+        if miss:
+            bad_missing.append((sym, miss))
+        if r.get("holding_window") not in VALID_HOLDING_WINDOWS:
+            bad_holding.append((sym, r.get("holding_window")))
+        cs = r.get("carry_scenarios") or {}
+        if not {"persists", "decay", "flip"}.issubset(cs.keys()):
+            bad_carry.append((sym, list(cs.keys())))
+        et = r.get("entry_trigger_text")
+        if et is not None and "7d MA" not in et:
+            bad_trigger.append((sym, et))
+    check("rec records have phase-2 fields", not bad_missing,
+          f"first: {bad_missing[0] if bad_missing else None}")
+    check("holding_window is one of three known strings", not bad_holding,
+          f"first bad: {bad_holding[0] if bad_holding else None}")
+    check("carry_scenarios has persists/decay/flip keys", not bad_carry,
+          f"first bad: {bad_carry[0] if bad_carry else None}")
+    check("entry_trigger_text mentions 7d MA when present", not bad_trigger,
+          f"first bad: {bad_trigger[0] if bad_trigger else None}")
+
+
+def test_carry_scenario_invariants() -> None:
+    """For a non-zero rate: persists >= decay >= flip == 0 (by construction)."""
+    if not SCAN_PATH.exists():
+        return
+    payload = json.loads(SCAN_PATH.read_text(encoding="utf-8"))
+    recs = payload.get("recommendations") or []
+    bad = []
+    for r in recs:
+        cs = r.get("carry_scenarios") or {}
+        p, d, f = cs.get("persists"), cs.get("decay"), cs.get("flip")
+        if p is None or d is None or f is None:
+            continue
+        # decay should be roughly half of persists; flip is exactly 0 by spec.
+        if not (p >= d - 1e-6 and d >= f - 1e-6 and abs(f) < 1e-6):
+            bad.append((r.get("symbol"), p, d, f))
+    check("carry scenarios obey persist >= decay >= flip == 0",
+          not bad, f"first bad: {bad[0] if bad else None}")
+
+
+def test_stop_vol_multiple_when_realised_vol_present() -> None:
+    """If stop_pct and realised_vol are both populated, stop_vol_multiple should be too."""
+    if not SCAN_PATH.exists():
+        return
+    payload = json.loads(SCAN_PATH.read_text(encoding="utf-8"))
+    recs = payload.get("recommendations") or []
+    bad = []
+    for r in recs:
+        if r.get("stop_pct") is not None and r.get("realised_vol_10d_ann"):
+            if r.get("stop_vol_multiple") is None:
+                bad.append(r.get("symbol"))
+    check("stop_vol_multiple computed when inputs available", not bad,
+          f"first bad: {bad[:3] if bad else None}")
+
+
 def test_trade_direction_format() -> None:
     if not SCAN_PATH.exists():
         return
@@ -267,6 +345,9 @@ ALL_TESTS = [
     test_action_values_are_legal,
     test_cash_session_alignment_with_category,
     test_trade_direction_format,
+    test_recommendation_phase2_fields,
+    test_carry_scenario_invariants,
+    test_stop_vol_multiple_when_realised_vol_present,
     test_market_hours_known_dates,
     test_supported_calendar_year_constant,
     test_compute_action_table,

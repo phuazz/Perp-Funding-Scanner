@@ -124,6 +124,17 @@ td.sym { font-weight: 500; }
 .action-legend .action { margin-right: 4px; vertical-align: 1px; }
 .dir-long  { color: var(--success); font-weight: 500; white-space: nowrap; }
 .dir-short { color: var(--danger);  font-weight: 500; white-space: nowrap; }
+.actionable-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.act-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+.act-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.act-card-direction { font-size: 14px; font-weight: 500; }
+.act-card-row { font-size: 12px; color: var(--text-muted); margin-top: 6px; line-height: 1.5; }
+.act-card-row strong { color: var(--text); font-weight: 500; margin-right: 4px; }
+.act-card-stop-warn { color: var(--danger); font-weight: 500; }
+.act-card-empty { padding: 24px; text-align: center; color: var(--text-muted); background: var(--bg-soft); border-radius: 8px; border: 1px dashed var(--border-strong); }
+.holding-pill { display: inline-block; padding: 1px 8px; font-size: 10px; border-radius: 3px; background: var(--bg-soft); color: var(--text); border: 1px solid var(--border); letter-spacing: 0.04em; }
+.trigger-met { color: var(--success); font-size: 11px; margin-left: 4px; }
+.trigger-pending { color: var(--text-faint); font-size: 11px; margin-left: 4px; }
 @media (max-width: 800px) {
   .container { padding: 16px; }
   header { flex-direction: column; align-items: flex-start; }
@@ -159,6 +170,11 @@ td.sym { font-weight: 500; }
 
 <section>
   <div class="kpi-grid" id="kpi-grid"></div>
+</section>
+
+<section>
+  <h2>Today's actionable setups<span class="hint">Live or Stage only — top 5 ranked by conviction</span></h2>
+  <div id="actionable-cards" class="actionable-grid"></div>
 </section>
 
 <section>
@@ -405,6 +421,70 @@ function renderKPIs(filteredRows) {
     <div class="kpi"><p class="kpi-label">Regime shifts</p><p class="kpi-value">${fRegime}</p><p class="kpi-hint">|7d − 30d| > 25pp</p></div>
   `;
   document.getElementById('kpi-grid').innerHTML = html;
+}
+
+// ---------------------------------------------------------------------------
+// Today's actionable setups: top 5 Live/Stage cards ranked by conviction.
+// Compact card-per-trade format with entry trigger, stop sizing in vol units,
+// 14d carry under three scenarios (persists/decay/flip), and holding window.
+// ---------------------------------------------------------------------------
+function renderActionablePanel(recs) {
+  const target = document.getElementById('actionable-cards');
+  // Live or Stage only, top 5 by conviction (descending).
+  const live = recs
+    .filter(r => r.action === 'Live' || r.action === 'Stage')
+    .sort((a, b) => (b.conviction || 0) - (a.conviction || 0)
+                  || (b.magnitude || 0) - (a.magnitude || 0))
+    .slice(0, 5);
+  if (!live.length) {
+    target.innerHTML = '<div class="act-card-empty">No actionable setups today — check back at next refresh.</div>';
+    return;
+  }
+  target.innerHTML = live.map(actionableCard).join('');
+}
+
+function actionableCard(r) {
+  const cs = r.carry_scenarios || {};
+  const persist = cs.persists ?? 0;
+  const decay = cs.decay ?? 0;
+  const flip = cs.flip ?? 0;
+  // Stop sizing warning: a stop closer than 1× daily vol is too tight; a normal
+  // intraday move can blow it out. Flag below 1.5× as a soft warning.
+  const stopWarn = (r.stop_vol_multiple !== null && r.stop_vol_multiple !== undefined && r.stop_vol_multiple < 1.5)
+    ? `<span class="act-card-stop-warn"> — ${r.stop_vol_multiple < 1.0 ? 'too tight' : 'tight'}</span>`
+    : '';
+
+  // Trigger status badge
+  let triggerStatus = '';
+  if (r.entry_trigger_met === true) triggerStatus = '<span class="trigger-met">(triggered)</span>';
+  else if (r.entry_trigger_met === false) triggerStatus = '<span class="trigger-pending">(pending)</span>';
+
+  // Cash row only for TradFi rows. Closed cash on a Stage that came from a
+  // downgrade gets the explicit blocker line.
+  let cashRow = '';
+  if (r.cash_session === 'Closed') {
+    const blocker = r.awaiting_cash_open
+      ? ' — <span class="warning-text">wait for NYSE 09:30 ET</span>'
+      : '';
+    cashRow = `<div class="act-card-row"><strong>Cash:</strong> ${cashBadge(r.cash_session)}${blocker}</div>`;
+  } else if (r.cash_session === 'Open') {
+    cashRow = `<div class="act-card-row"><strong>Cash:</strong> ${cashBadge(r.cash_session)}</div>`;
+  }
+
+  return `
+    <div class="act-card">
+      <div class="act-card-header">
+        ${convChip(r.conviction)}
+        ${actionBadge(r)}
+        <span class="act-card-direction">${tradeDir(r)}</span>
+        <span class="holding-pill" title="Holding window inferred from |fund_z| vs |Δz|">${r.holding_window || '—'}</span>
+      </div>
+      ${r.entry_trigger_text ? `<div class="act-card-row"><strong>Entry:</strong> ${r.entry_trigger_text} ${triggerStatus}</div>` : ''}
+      <div class="act-card-row"><strong>Stop:</strong> $${fmtPx(r.stop_price)} (${r.stop_pct != null ? r.stop_pct.toFixed(1) + '%' : '—'} / ${r.stop_vol_multiple != null ? r.stop_vol_multiple.toFixed(1) + '× daily vol' : '—'})${stopWarn}</div>
+      <div class="act-card-row"><strong>Carry 14d:</strong> persist +${persist.toFixed(2)}% / decay +${decay.toFixed(2)}% / flip ${flip >= 0 ? '+' : ''}${flip.toFixed(2)}%</div>
+      ${cashRow}
+    </div>
+  `;
 }
 
 function renderRecsTable(recs) {
@@ -679,8 +759,10 @@ function renderForCurrentFilter() {
   document.getElementById('filter-count').textContent =
     `${filtered.length} of ${DATA.rows.length} symbols`;
 
+  const filteredRecs = getFilteredRecs();
   renderKPIs(filtered);
-  renderRecsTable(getFilteredRecs());
+  renderActionablePanel(filteredRecs);
+  renderRecsTable(filteredRecs);
 
   const stretched = filtered.filter(r => r.fund_ann_30d > 0)
     .sort((a, b) => b.fund_ann_30d - a.fund_ann_30d).slice(0, 25);

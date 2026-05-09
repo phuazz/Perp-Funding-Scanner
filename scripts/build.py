@@ -472,6 +472,7 @@ def scan(verbose=True):
             rv_10d_ann = float("nan")
             px_7d_high = None
             px_7d_low = None
+            px_7d_ma = None
             try:
                 klines = get_klines_60d(sym)
                 if klines and len(klines) >= 30:
@@ -488,6 +489,11 @@ def scan(verbose=True):
                     if len(highs) >= 7:
                         px_7d_high = round(max(highs[-7:]), 6)
                         px_7d_low = round(min(lows[-7:]), 6)
+                    # 7d MA used as the entry trigger reference for actionable setups.
+                    if len(closes) >= 7:
+                        px_7d_ma = round(sum(closes[-7:]) / 7, 6)
+                    else:
+                        px_7d_ma = None
             except Exception:
                 pass
 
@@ -516,6 +522,7 @@ def scan(verbose=True):
                 "px_chg_30d": round(chg_30d, 2) if not math.isnan(chg_30d) else None,
                 "px_7d_high": px_7d_high,
                 "px_7d_low": px_7d_low,
+                "px_7d_ma": px_7d_ma,
                 "fund_interval_h": interval_h,
                 "fund_ann_30d": round(f30, 2),
                 "fund_ann_7d": round(f7, 2),
@@ -604,6 +611,66 @@ def build_recommendations(liquid_records):
         stop = r.get("px_7d_high") if side == "Short perp" else r.get("px_7d_low")
         # Carry: % of notional captured if held delta-neutral CARRY_HOLD_DAYS days.
         carry_pct = round(abs(r["fund_ann_30d"]) * CARRY_HOLD_DAYS / 365.0, 2)
+
+        # ---- Phase 2 fields ----
+        price = r.get("price")
+        ma7 = r.get("px_7d_ma")
+        rv_ann = r.get("realised_vol_10d_ann")
+
+        # Stop distance as % of price and as multiple of daily realised vol.
+        # daily_vol approximated as annualised vol / sqrt(365) since perps trade 24/7.
+        stop_pct = None
+        stop_vol_mult = None
+        if stop and price:
+            stop_pct = round(abs(stop - price) / price * 100, 2)
+            if rv_ann and rv_ann > 0:
+                daily_vol = rv_ann / (365 ** 0.5)
+                stop_vol_mult = round(stop_pct / daily_vol, 2)
+
+        # Three-scenario carry on the funding leg of the directional trade.
+        # When entered "with the carry" (short stretched longs / long crowded shorts),
+        # the trade EARNS |fund_ann_30d| annualised. Spec scenarios:
+        #   persists: rate stays at current for 14d            -> +|F| x 14/365
+        #   decay:    rate decays linearly to 0 over 14d       -> avg = |F|/2, so +|F| x 7/365
+        #   flip:     rate stays current for 7d, flips to -current for next 7d
+        #             -> +|F| x 7/365 + (-|F|) x 7/365 = 0 (symmetric by spec)
+        abs_fund = abs(r["fund_ann_30d"])
+        carry_persist = round(abs_fund * CARRY_HOLD_DAYS / 365.0, 2)
+        carry_decay = round(abs_fund * (CARRY_HOLD_DAYS / 2) / 365.0, 2)
+        carry_flip = 0.0
+        carry_scenarios = {
+            "persists": carry_persist,
+            "decay": carry_decay,
+            "flip": carry_flip,
+        }
+
+        # Holding window: classify by whether freshness (|fz_delta|) or structural
+        # extremity (|fund_z_30d|) drives the setup.
+        #   ratio = |fz_delta| / max(|fz|, 0.5)
+        #   ratio > 0.7 -> Tactical (fresh dominates, mean-reverts fast)
+        #   ratio < 0.3 AND |fz| > 1.5 -> Strategic (chronic carry, no fresh shift)
+        #   else -> Swing
+        denom = max(abs(fz), 0.5)
+        ratio = (abs(fz_delta) / denom) if (fz_delta is not None) else 0.0
+        if ratio > 0.7:
+            holding_window = "Tactical 1-5d"
+        elif ratio < 0.3 and abs(fz) > 1.5:
+            holding_window = "Strategic 20d+"
+        else:
+            holding_window = "Swing 5-20d"
+
+        # Entry trigger text: 7d MA cross. For Long perps, entry is on close
+        # above 7d MA; for Shorts, close below. If price is already past, mark
+        # entry_trigger_met=True so the UI can flag.
+        entry_trigger_text = None
+        entry_trigger_met = None
+        if ma7 and price:
+            if side == "Long perp":
+                entry_trigger_text = f"Enter on close above 7d MA (${ma7:.6g})"
+                entry_trigger_met = price > ma7
+            else:
+                entry_trigger_text = f"Enter on close below 7d MA (${ma7:.6g})"
+                entry_trigger_met = price < ma7
         qualified.append({
             "symbol": r["symbol"],
             "category": r["category"],
@@ -627,6 +694,14 @@ def build_recommendations(liquid_records):
             "trade_direction": r.get("trade_direction"),
             "cash_session": r.get("cash_session"),
             "awaiting_cash_open": r.get("awaiting_cash_open", False),
+            # Phase 2: actionable-setup card fields.
+            "px_7d_ma": ma7,
+            "stop_pct": stop_pct,
+            "stop_vol_multiple": stop_vol_mult,
+            "holding_window": holding_window,
+            "entry_trigger_text": entry_trigger_text,
+            "entry_trigger_met": entry_trigger_met,
+            "carry_scenarios": carry_scenarios,
         })
 
     qualified.sort(key=lambda x: x["magnitude"], reverse=True)
