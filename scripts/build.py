@@ -556,6 +556,7 @@ def scan(verbose=True):
 FUND_Z_QUALIFY = 1.0       # |fund_z_30d| above this enters the rec table
 CARRY_HOLD_DAYS = 14       # implied 14d delta-neutral carry
 TOPLIST_LIMIT = 20         # cap on rec rows shown
+SLIPPAGE_BPS_ROUND_TRIP = 10  # 5bps in + 5bps out, expressed as percentage = 0.10
 
 
 def _risk_note(cat, vol_m):
@@ -626,6 +627,17 @@ def build_recommendations(liquid_records):
             if rv_ann and rv_ann > 0:
                 daily_vol = rv_ann / (365 ** 0.5)
                 stop_vol_mult = round(stop_pct / daily_vol, 2)
+
+        # Round-trip breakeven cost: minimum favourable move in the underlying needed
+        # just to cover slippage + 14d adverse funding. "Worst case funding" for
+        # round-trip uses the magnitude of full-period adverse funding (|F| x 14/365),
+        # not the symmetric "flip" scenario (which nets to 0). This produces a
+        # more useful breakeven number for sizing decisions.
+        roundtrip_cost_pct = round(
+            SLIPPAGE_BPS_ROUND_TRIP / 100.0
+            + abs(r["fund_ann_30d"]) * CARRY_HOLD_DAYS / 365.0,
+            2,
+        )
 
         # Three-scenario carry on the funding leg of the directional trade.
         # When entered "with the carry" (short stretched longs / long crowded shorts),
@@ -702,6 +714,7 @@ def build_recommendations(liquid_records):
             "entry_trigger_text": entry_trigger_text,
             "entry_trigger_met": entry_trigger_met,
             "carry_scenarios": carry_scenarios,
+            "roundtrip_cost_pct": roundtrip_cost_pct,
         })
 
     qualified.sort(key=lambda x: x["magnitude"], reverse=True)

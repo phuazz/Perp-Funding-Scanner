@@ -139,7 +139,7 @@ def test_recommendation_phase2_fields() -> None:
     required = {
         "stop_pct", "stop_vol_multiple", "holding_window",
         "entry_trigger_text", "entry_trigger_met", "carry_scenarios",
-        "px_7d_ma",
+        "px_7d_ma", "roundtrip_cost_pct",
     }
     bad_missing = []
     bad_holding = []
@@ -185,6 +185,25 @@ def test_carry_scenario_invariants() -> None:
             bad.append((r.get("symbol"), p, d, f))
     check("carry scenarios obey persist >= decay >= flip == 0",
           not bad, f"first bad: {bad[0] if bad else None}")
+
+
+def test_roundtrip_cost_formula() -> None:
+    """roundtrip_cost_pct = 0.10 (10bps slippage round-trip) + |fund_ann_30d| * 14/365."""
+    if not SCAN_PATH.exists():
+        return
+    payload = json.loads(SCAN_PATH.read_text(encoding="utf-8"))
+    recs = payload.get("recommendations") or []
+    bad = []
+    for r in recs:
+        f = r.get("fund_ann_30d")
+        rt = r.get("roundtrip_cost_pct")
+        if f is None or rt is None:
+            continue
+        expected = 0.10 + abs(f) * 14 / 365.0
+        if abs(rt - expected) > 0.02:  # rounding tolerance
+            bad.append((r.get("symbol"), expected, rt))
+    check("roundtrip_cost_pct = 10bps + |F| * 14/365", not bad,
+          f"first bad: {bad[0] if bad else None}")
 
 
 def test_stop_vol_multiple_when_realised_vol_present() -> None:
@@ -347,6 +366,7 @@ ALL_TESTS = [
     test_trade_direction_format,
     test_recommendation_phase2_fields,
     test_carry_scenario_invariants,
+    test_roundtrip_cost_formula,
     test_stop_vol_multiple_when_realised_vol_present,
     test_market_hours_known_dates,
     test_supported_calendar_year_constant,
