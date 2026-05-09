@@ -187,6 +187,43 @@ def test_carry_scenario_invariants() -> None:
           not bad, f"first bad: {bad[0] if bad else None}")
 
 
+def test_track_record_shape() -> None:
+    """track_record is either None (Untested) or a dict with the three known keys."""
+    if not SCAN_PATH.exists():
+        return
+    payload = json.loads(SCAN_PATH.read_text(encoding="utf-8"))
+    rows = payload.get("rows") or []
+    bad = []
+    for r in rows:
+        tr = r.get("track_record")
+        if tr is None:
+            continue
+        if not isinstance(tr, dict):
+            bad.append((r["symbol"], "not-dict"))
+            continue
+        if not {"signal_count", "hit_rate"}.issubset(tr.keys()):
+            bad.append((r["symbol"], list(tr.keys())))
+            continue
+        if not (0 <= tr["hit_rate"] <= 1):
+            bad.append((r["symbol"], f"hit_rate {tr['hit_rate']}"))
+    check("track_record has signal_count + hit_rate, hit_rate in [0,1]",
+          not bad, f"first bad: {bad[0] if bad else None}")
+
+
+def test_funding_history_file() -> None:
+    """data/funding_history.json exists and contains entries for liquid symbols."""
+    fh_path = REPO_ROOT / "data" / "funding_history.json"
+    check("data/funding_history.json exists", fh_path.exists(), str(fh_path))
+    if not fh_path.exists():
+        return
+    fh = json.loads(fh_path.read_text(encoding="utf-8"))
+    check("funding_history has 'history' key", "history" in fh)
+    if "history" in fh:
+        check("funding_history has at least 50 symbols",
+              len(fh["history"]) >= 50,
+              f"got {len(fh['history'])}")
+
+
 def test_roundtrip_cost_formula() -> None:
     """roundtrip_cost_pct = 0.10 (10bps slippage round-trip) + |fund_ann_30d| * 14/365."""
     if not SCAN_PATH.exists():
@@ -366,6 +403,8 @@ ALL_TESTS = [
     test_trade_direction_format,
     test_recommendation_phase2_fields,
     test_carry_scenario_invariants,
+    test_track_record_shape,
+    test_funding_history_file,
     test_roundtrip_cost_formula,
     test_stop_vol_multiple_when_realised_vol_present,
     test_market_hours_known_dates,

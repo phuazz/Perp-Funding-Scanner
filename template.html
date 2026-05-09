@@ -388,6 +388,16 @@ function cashBadge(cash) {
   return `<span class="cash cash-${cash.toLowerCase()}">${cash}</span>`;
 }
 
+// Compact 90d track-record badge: 'N signals · X% hit · PF Y'. 'Untested' if
+// fewer than the minimum data window or zero historical signals fired.
+function trackRecordCell(tr) {
+  if (!tr) return '<span class="muted dim-cell">Untested</span>';
+  const pf = tr.profit_factor;
+  const pfStr = pf === null || pf === undefined ? '∞' : pf.toFixed(1);
+  const hitPct = Math.round((tr.hit_rate ?? 0) * 100);
+  return `<span style="font-size:11px;">${tr.signal_count} sig · ${hitPct}% hit · PF ${pfStr}</span>`;
+}
+
 // Compact 14d carry tuple: persist / decay / flip. Always positive in this
 // pipeline (trades are entered with the carry); flip is 0 by spec construction.
 function carryTuple(cs) {
@@ -494,6 +504,7 @@ function actionableCard(r) {
       <div class="act-card-row"><strong>Stop:</strong> $${fmtPx(r.stop_price)} (${r.stop_pct != null ? r.stop_pct.toFixed(1) + '%' : '—'} / ${r.stop_vol_multiple != null ? r.stop_vol_multiple.toFixed(1) + '× daily vol' : '—'})${stopWarn}</div>
       <div class="act-card-row"><strong>Carry 14d:</strong> persist +${persist.toFixed(2)}% / decay +${decay.toFixed(2)}% / flip ${flip >= 0 ? '+' : ''}${flip.toFixed(2)}%</div>
       <div class="act-card-row"><strong>Round-trip:</strong> ${r.roundtrip_cost_pct != null ? r.roundtrip_cost_pct.toFixed(2) + '%' : '—'} <span class="dim-cell">(breakeven move needed)</span></div>
+      <div class="act-card-row"><strong>90d track:</strong> ${trackRecordCell(r.track_record)}</div>
       ${cashRow}
     </div>
   `;
@@ -516,6 +527,7 @@ function renderRecsTable(recs) {
     <th class="num">Stop (7d)</th>
     <th class="num" title="14d carry on the funding leg, three scenarios. Persists: rate stays at current level. Decay: rate drifts linearly to 0 over 14d (avg = current/2). Flip: rate stays current for 7d then flips to -current for 7d (nets to 0 by symmetry).">Carry 14d (P/D/F) <i class="ti ti-info-circle" style="font-size:11px; opacity:0.6;"></i></th>
     <th class="num" title="Breakeven move needed in the underlying to cover round-trip costs: 10bps slippage (5bps in + 5bps out) plus magnitude of adverse 14d funding (|F| * 14/365). Smaller is better.">Round-trip <i class="ti ti-info-circle" style="font-size:11px; opacity:0.6;"></i></th>
+    <th title="90d rule-based backtest. Signal: |30d annualised funding| crossed +30 / -15. Trade: enter on close, hold 7d or stop at 7d swing. PnL gross of slippage and fees. No trend confirmation in the historical signal (live signal uses trend_score). Indicative only; does not reflect live execution.">90d track <i class="ti ti-info-circle" style="font-size:11px; opacity:0.6;"></i></th>
     <th class="num">24h vol</th>
     <th>Cash</th>
     <th>Risk</th>
@@ -543,6 +555,7 @@ function renderRecsTable(recs) {
       <td class="num">${fmtPx(r.stop_price)}</td>
       <td class="num muted" style="white-space:nowrap;">${carryTuple(r.carry_scenarios)}</td>
       <td class="num">${r.roundtrip_cost_pct != null ? r.roundtrip_cost_pct.toFixed(2) + '%' : '—'}</td>
+      <td>${trackRecordCell(r.track_record)}</td>
       <td class="num muted">${fmtVol(r.vol_24h_m)}</td>
       <td>${cashBadge(r.cash_session)}</td>
       <td>${r.risk_note ? `<span class="risk-tag">${r.risk_note}</span>` : ''}</td>

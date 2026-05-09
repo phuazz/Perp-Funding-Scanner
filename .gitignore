@@ -6,3 +6,6 @@ __pycache__/
 *.swp
 *.log
 .claude/
+# Per-symbol funding history intermediates (if ever produced).
+# The committed source of truth is data/funding_history.json (single file).
+data/funding_history/

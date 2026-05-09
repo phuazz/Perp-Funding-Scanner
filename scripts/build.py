@@ -41,7 +41,11 @@ BASE = "https://fapi.binance.com"
 SESSION = requests.Session()
 SESSION.headers.update({"User-Agent": "Mozilla/5.0 (compatible; funding-scanner/1.0)"})
 
-LOOKBACK_DAYS = 60          # history for funding + price
+LOOKBACK_DAYS = 90          # history for funding + price; supports 90d backtest in Phase 4
+KLINES_DAYS = 95            # 5d buffer above LOOKBACK_DAYS so we always have the full window
+BACKTEST_HOLD_DAYS = 7      # 90d historical signal hold horizon (7d in spec)
+BACKTEST_FUND_LONG = -15.0  # raw funding threshold (% / yr) for historical Long signal
+BACKTEST_FUND_SHORT = 30.0  # raw funding threshold (% / yr) for historical Short signal
 MIN_VOLUME_USDT_M = 5.0     # liquidity filter for actionable list
 RATE_SLEEP = 0.08           # politeness between calls
 
@@ -155,6 +159,116 @@ def cash_session_open(dt_utc: datetime) -> bool:
     open_time = dtime(9, 30)
     nt = ny.time()
     return open_time <= nt < close_time
+
+
+# ---------------------------------------------------------------------------
+# 90d historical track record (Phase 4)
+# ---------------------------------------------------------------------------
+# Simple rule-based backtest. Caveats baked in to the dashboard tooltip:
+#   - Signal definition uses raw 30d annualised funding thresholds
+#     (BACKTEST_FUND_SHORT / BACKTEST_FUND_LONG) rather than the live
+#     vol-normalised fund_z, because computing historical fund_z requires
+#     historical realised vol; using today's vol everywhere would
+#     introduce look-ahead bias.
+#   - No trend confirmation in the historical signal (live signal uses
+#     trend_score). This keeps the backtest computationally simple and
+#     conservative; it counts more signals than the live rule would.
+#   - Hold rule: enter on close at signal day d, exit on close day d+7
+#     unless price hits the 7d swing in adverse direction first (stop).
+#   - PnL is gross of slippage, fees, and funding paid during the hold.
+#   - "Untested" returned when fewer than 30d of funding history or fewer
+#     than 7d forward klines are available, OR when zero signals fire
+#     in the available window.
+
+def _annualise_pct(rate_per_period: float, interval_h: int) -> float:
+    periods_per_year = (24 * 365) / interval_h
+    return rate_per_period * periods_per_year * 100
+
+
+def compute_track_record(funding_history, klines, interval_h):
+    """Walk historical klines + funding, simulate 7d-hold trades on every
+    raw-threshold signal, return signal_count / hit_rate / profit_factor.
+
+    funding_history: list of (timestamp_ms, rate_per_period). Sorted asc.
+    klines: list of [open_ms, open, high, low, close, ...]. Daily, sorted asc.
+    interval_h: funding interval in hours (8 typical, 4 occasional).
+    Returns None if data is insufficient or zero signals fire.
+    """
+    if not funding_history or not klines or len(klines) < 38:
+        return None
+
+    # Bucket funding by day (UTC). Each day collapses to mean rate so the
+    # 30d rolling lookup is one index per day rather than per settlement.
+    fh_df = pd.DataFrame(funding_history, columns=["ts", "rate"])
+    fh_df["date"] = pd.to_datetime(fh_df["ts"], unit="ms", utc=True).dt.normalize()
+    daily_fund = fh_df.groupby("date")["rate"].mean()
+
+    # Walk klines from index 30 (so we have a 30d funding window) up to
+    # len-BACKTEST_HOLD_DAYS so we have a forward window to score the trade.
+    signals_pnl = []
+    for i in range(30, len(klines) - BACKTEST_HOLD_DAYS):
+        day = pd.Timestamp(klines[i][0], unit="ms", tz="UTC").normalize()
+        window_start = day - pd.Timedelta(days=30)
+        window = daily_fund.loc[
+            (daily_fund.index > window_start) & (daily_fund.index <= day)
+        ]
+        if len(window) < 10:
+            continue
+        ann_pct = _annualise_pct(window.mean(), interval_h)
+        # Direction matches LIVE rec logic: stretched longs => Short trade.
+        if ann_pct > BACKTEST_FUND_SHORT:
+            side = "short"
+        elif ann_pct < BACKTEST_FUND_LONG:
+            side = "long"
+        else:
+            continue
+
+        try:
+            entry = float(klines[i][4])
+            prior_highs = [float(k[2]) for k in klines[max(0, i - 7):i]]
+            prior_lows = [float(k[3]) for k in klines[max(0, i - 7):i]]
+            forward_highs = [float(k[2]) for k in klines[i + 1:i + 1 + BACKTEST_HOLD_DAYS]]
+            forward_lows = [float(k[3]) for k in klines[i + 1:i + 1 + BACKTEST_HOLD_DAYS]]
+            forward_closes = [float(k[4]) for k in klines[i + 1:i + 1 + BACKTEST_HOLD_DAYS]]
+        except (IndexError, ValueError, TypeError):
+            continue
+        if not prior_highs or not forward_closes:
+            continue
+
+        if side == "short":
+            stop = max(prior_highs)
+            stopped = any(h >= stop for h in forward_highs)
+            if stopped:
+                pnl_pct = (entry - stop) / entry * 100  # negative
+            else:
+                pnl_pct = (entry - forward_closes[-1]) / entry * 100
+        else:  # long
+            stop = min(prior_lows)
+            stopped = any(low <= stop for low in forward_lows)
+            if stopped:
+                pnl_pct = (stop - entry) / entry * 100  # negative
+            else:
+                pnl_pct = (forward_closes[-1] - entry) / entry * 100
+
+        signals_pnl.append(pnl_pct)
+
+    if not signals_pnl:
+        return None
+
+    wins = [p for p in signals_pnl if p > 0]
+    losses = [p for p in signals_pnl if p < 0]
+    hit_rate = round(len(wins) / len(signals_pnl), 3)
+    if losses:
+        profit_factor = round(sum(wins) / abs(sum(losses)), 2)
+    elif wins:
+        profit_factor = None  # no losses; PF undefined (avoid inf in JSON)
+    else:
+        profit_factor = 0.0
+    return {
+        "signal_count": len(signals_pnl),
+        "hit_rate": hit_rate,
+        "profit_factor": profit_factor,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -302,9 +416,9 @@ def get_24h_tickers_bulk():
     return {t["symbol"]: t for t in data}
 
 
-def get_klines_60d(symbol):
+def get_klines_long(symbol, days=KLINES_DAYS):
     end = int(time.time() * 1000)
-    start = end - 65 * 86_400_000
+    start = end - days * 86_400_000
     return get_with_retry(
         f"{BASE}/fapi/v1/klines",
         params={
@@ -312,7 +426,7 @@ def get_klines_60d(symbol):
             "interval": "1d",
             "startTime": start,
             "endTime": end,
-            "limit": 70,
+            "limit": days + 5,
         },
     )
 
@@ -428,6 +542,12 @@ def scan(verbose=True):
     if verbose:
         print(f"Universe: {len(universe)} perpetuals")
 
+    # Funding history captured per symbol for later persistence to
+    # data/funding_history.json. Populated for every row that successfully
+    # fetches a funding history; not gated on liquidity (caller filters).
+    global funding_history_aggregate
+    funding_history_aggregate = {}
+
     rows = []
     for i, u in enumerate(universe, 1):
         sym = u["symbol"]
@@ -474,7 +594,7 @@ def scan(verbose=True):
             px_7d_low = None
             px_7d_ma = None
             try:
-                klines = get_klines_60d(sym)
+                klines = get_klines_long(sym, days=KLINES_DAYS)
                 if klines and len(klines) >= 30:
                     closes = [float(k[4]) for k in klines]
                     highs = [float(k[2]) for k in klines]
@@ -503,6 +623,15 @@ def scan(verbose=True):
             # Freshness: vol-normalised acceleration of positioning over the last week vs the
             # 30d structural baseline. Mean-reversion edge concentrates where this is large.
             fund_z_delta = round(fund_z_7d - fund_z_30d, 3) if (fund_z_7d is not None and fund_z_30d is not None) else None
+
+            # 90d historical track record. Uses the same funding history we already
+            # pulled (LOOKBACK_DAYS=90) plus the kline window (KLINES_DAYS=95).
+            track_record = None
+            if klines and fh:
+                try:
+                    track_record = compute_track_record(fh, klines, interval_h)
+                except Exception:
+                    track_record = None
 
             # Cash session (TradFi-only) and Action state machine.
             cat = u["category"]
@@ -540,7 +669,13 @@ def scan(verbose=True):
                 "action": action,
                 "trade_direction": trade_direction,
                 "awaiting_cash_open": awaiting_cash_open,
+                "track_record": track_record,
             })
+
+            # Stash full funding history for later aggregation into
+            # data/funding_history.json. Keyed by symbol so write_output can
+            # serialise once per build.
+            funding_history_aggregate[sym] = [(int(t), float(r)) for t, r in fh]
 
             if verbose and (i % 25 == 0 or i == len(universe)):
                 print(f"  [{i}/{len(universe)}] processed")
@@ -715,6 +850,7 @@ def build_recommendations(liquid_records):
             "entry_trigger_met": entry_trigger_met,
             "carry_scenarios": carry_scenarios,
             "roundtrip_cost_pct": roundtrip_cost_pct,
+            "track_record": r.get("track_record"),
         })
 
     qualified.sort(key=lambda x: x["magnitude"], reverse=True)
@@ -794,6 +930,23 @@ def write_output(payload):
     out_json = DATA_DIR / "scan.json"
     out_json.write_text(json.dumps(payload, indent=2, allow_nan=False))
     print(f"Wrote {out_json} ({out_json.stat().st_size / 1024:.1f} KB)")
+
+    # data/funding_history.json: aggregated 90d funding history for every
+    # liquid symbol in this scan. Single committed file, per the user's
+    # preference for one file over per-symbol intermediates.
+    fh_agg = globals().get("funding_history_aggregate", {}) or {}
+    if fh_agg:
+        liquid_syms = {r["symbol"] for r in payload.get("rows", [])}
+        out_history = {
+            "generated_at_utc": payload["generated_at_utc"],
+            "lookback_days": LOOKBACK_DAYS,
+            "history": {
+                sym: hist for sym, hist in fh_agg.items() if sym in liquid_syms
+            },
+        }
+        out_history_path = DATA_DIR / "funding_history.json"
+        out_history_path.write_text(json.dumps(out_history, separators=(",", ":"), allow_nan=False))
+        print(f"Wrote {out_history_path} ({out_history_path.stat().st_size / 1024:.1f} KB)")
 
     if not TEMPLATE.exists():
         print(f"WARNING: {TEMPLATE} not found — skipping docs/index.html build")
