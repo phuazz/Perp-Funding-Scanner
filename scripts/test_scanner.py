@@ -210,6 +210,45 @@ def test_track_record_shape() -> None:
           not bad, f"first bad: {bad[0] if bad else None}")
 
 
+def test_universe_rank_present_and_consistent() -> None:
+    """Every liquid row with non-null fund_z_30d has universe_rank in [1, total],
+    and the total matches the count of ranked rows."""
+    if not SCAN_PATH.exists():
+        return
+    payload = json.loads(SCAN_PATH.read_text(encoding="utf-8"))
+    rows = payload.get("rows") or []
+    ranked = [r for r in rows if r.get("universe_rank") is not None]
+    if not ranked:
+        return
+    totals = {r["universe_rank_total"] for r in ranked}
+    bad_rank = [r["symbol"] for r in ranked
+                if r["universe_rank"] < 1 or r["universe_rank"] > r["universe_rank_total"]]
+    check("universe_rank_total agrees across rows", len(totals) == 1,
+          f"distinct totals: {totals}")
+    check("universe_rank in [1, total]", not bad_rank,
+          f"first bad: {bad_rank[:3]}")
+    # Verify every row with non-null fund_z is ranked
+    rows_with_z = [r for r in rows if r.get("fund_z_30d") is not None]
+    bad_unranked = [r["symbol"] for r in rows_with_z if r.get("universe_rank") is None]
+    check("every row with fund_z gets a universe_rank", not bad_unranked,
+          f"first bad: {bad_unranked[:3]}")
+
+
+def test_topdecile_recommendations_present() -> None:
+    """Top-decile rec list exists and uses cutoff <= absolute threshold."""
+    if not SCAN_PATH.exists():
+        return
+    payload = json.loads(SCAN_PATH.read_text(encoding="utf-8"))
+    check("recommendations_topdecile key present", "recommendations_topdecile" in payload)
+    check("topdecile_cutoff_fund_z key present", "topdecile_cutoff_fund_z" in payload)
+    cutoff = payload.get("topdecile_cutoff_fund_z")
+    if cutoff is not None:
+        # Top decile cutoff should be at or above the 0.5 floor and could be
+        # above or below the absolute threshold of 1.0 depending on regime.
+        check("topdecile cutoff respects 0.5 floor", cutoff >= 0.5,
+              f"cutoff = {cutoff}")
+
+
 def test_funding_history_file() -> None:
     """data/funding_history.json exists and contains entries for liquid symbols."""
     fh_path = REPO_ROOT / "data" / "funding_history.json"
@@ -404,6 +443,8 @@ ALL_TESTS = [
     test_recommendation_phase2_fields,
     test_carry_scenario_invariants,
     test_track_record_shape,
+    test_universe_rank_present_and_consistent,
+    test_topdecile_recommendations_present,
     test_funding_history_file,
     test_roundtrip_cost_formula,
     test_stop_vol_multiple_when_realised_vol_present,

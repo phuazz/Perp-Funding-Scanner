@@ -720,8 +720,29 @@ def _sanitise_nans(records):
     return records
 
 
-def build_recommendations(liquid_records):
-    """Build the ranked Recommendations list. Takes pre-sanitised dict records."""
+def _annotate_universe_rank(liquid_records):
+    """Rank every liquid row by |fund_z_30d| descending. Rows without
+    fund_z get None for rank (denominator stays the same).
+    Mutates records in place. Phase 5.1.
+    """
+    with_z = [r for r in liquid_records if r.get("fund_z_30d") is not None]
+    with_z.sort(key=lambda r: abs(r["fund_z_30d"]), reverse=True)
+    total = len(with_z)
+    for i, r in enumerate(with_z, 1):
+        r["universe_rank"] = i
+        r["universe_rank_total"] = total
+    for r in liquid_records:
+        if r.get("universe_rank") is None:
+            r["universe_rank"] = None
+            r["universe_rank_total"] = total
+
+
+def build_recommendations(liquid_records, fz_qualify=FUND_Z_QUALIFY):
+    """Build the ranked Recommendations list. Takes pre-sanitised dict records.
+
+    fz_qualify is the absolute |fund_z_30d| threshold for entry. Pass a smaller
+    value to support the top-decile mode.
+    """
     qualified = []
     for r in liquid_records:
         fz = r.get("fund_z_30d")
@@ -729,7 +750,7 @@ def build_recommendations(liquid_records):
         fz_delta = r.get("fund_z_delta")
         if fz is None:
             continue
-        if abs(fz) < FUND_Z_QUALIFY:
+        if abs(fz) < fz_qualify:
             continue
         # Direction: short paid carry if positive z + negative trend, long if negative z + positive trend.
         if fz > 0 and ts < 0:
@@ -851,6 +872,8 @@ def build_recommendations(liquid_records):
             "carry_scenarios": carry_scenarios,
             "roundtrip_cost_pct": roundtrip_cost_pct,
             "track_record": r.get("track_record"),
+            "universe_rank": r.get("universe_rank"),
+            "universe_rank_total": r.get("universe_rank_total"),
         })
 
     qualified.sort(key=lambda x: x["magnitude"], reverse=True)
@@ -879,7 +902,26 @@ def build_payload(rows):
     liquid = df[df["vol_24h_m"] >= MIN_VOLUME_USDT_M].copy()
     liquid_records = _sanitise_nans(liquid.to_dict(orient="records"))
 
+    # Phase 5.1: rank every liquid row by |fund_z_30d| so the dashboard can
+    # show '3 of 47' style positioning context per instrument.
+    _annotate_universe_rank(liquid_records)
+
     recommendations = _sanitise_nans(build_recommendations(liquid_records))
+
+    # Phase 5.2: parallel top-decile variant. Rank by |fund_z_30d| descending,
+    # take the top decile, then apply the same trend-direction filter and
+    # ranking. Threshold = max(0.5, |fund_z| of the decile cutoff). The 0.5
+    # floor prevents pathological cases when the universe is mostly flat.
+    fz_values = [abs(r["fund_z_30d"]) for r in liquid_records if r.get("fund_z_30d") is not None]
+    fz_values.sort(reverse=True)
+    if fz_values:
+        decile_index = max(1, len(fz_values) // 10)
+        decile_cutoff = max(0.5, fz_values[decile_index - 1])
+    else:
+        decile_cutoff = FUND_Z_QUALIFY
+    recommendations_topdecile = _sanitise_nans(
+        build_recommendations(liquid_records, fz_qualify=decile_cutoff)
+    )
 
     # Legacy headline-symbols list, kept for back-compat with anything reading scan.json.
     headline_syms = [r["symbol"] for r in recommendations if r.get("conviction", 0) >= 2]
@@ -916,6 +958,8 @@ def build_payload(rows):
         "summary": summary,
         "rows": liquid_records,
         "recommendations": recommendations,
+        "recommendations_topdecile": recommendations_topdecile,
+        "topdecile_cutoff_fund_z": round(decile_cutoff, 3),
         "headline_symbols": headline_syms,
     }
     return payload

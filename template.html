@@ -179,6 +179,11 @@ td.sym { font-weight: 500; }
 
 <section>
   <h2>Recommendations<span class="hint">|fund_z| &gt; 1.0 with trend confirmation — ranked by |fund_z| × trend alignment × (1 + |Δz|)</span></h2>
+  <div class="tab-row" id="rec-mode-tabs" style="margin: 0 0 8px;">
+    <button class="tab-btn active" data-mode="absolute">Absolute threshold (|z| &gt; 1.0)</button>
+    <button class="tab-btn" data-mode="topdecile">Top decile (most extreme today)</button>
+    <span class="filter-count" id="rec-mode-hint" style="margin-left: 12px;"></span>
+  </div>
   <div class="action-legend">
     <span class="action action-live">Live</span> trend confirms in trade direction
     &nbsp;·&nbsp;
@@ -292,6 +297,9 @@ const TREND_ICON = { up: 'ti-trending-up', flat: 'ti-trending-flat', down: 'ti-t
 let DATA = null;
 let CHART_QUAD = null, CHART_HIST_RAW = null, CHART_HIST_Z = null;
 let CURRENT_CAT = 'all';
+// Recommendation list mode. 'absolute' = |fund_z| > 1.0; 'topdecile' = top 10%
+// by |fund_z| within today's full liquid universe.
+let CURRENT_REC_MODE = 'absolute';
 
 const CAT_BAR_COLORS = {
   'TradFi-Equity':    'rgba(213,90,48,0.7)',
@@ -388,6 +396,14 @@ function cashBadge(cash) {
   return `<span class="cash cash-${cash.toLowerCase()}">${cash}</span>`;
 }
 
+// Universe rank cell: 'N of M' showing the row's |fund_z_30d| rank within
+// today's full liquid universe. Denominator is constant regardless of the
+// active category filter so the user has a stable yardstick.
+function universeRankCell(r) {
+  if (r.universe_rank == null || r.universe_rank_total == null) return '—';
+  return `${r.universe_rank} <span class="dim-cell">of ${r.universe_rank_total}</span>`;
+}
+
 // Compact 90d track-record badge: 'N signals · X% hit · PF Y'. 'Untested' if
 // fewer than the minimum data window or zero historical signals fired.
 function trackRecordCell(tr) {
@@ -419,7 +435,11 @@ function getFiltered() {
   return DATA.rows.filter(r => rowMatchesFilter(r, CURRENT_CAT));
 }
 function getFilteredRecs() {
-  return (DATA.recommendations || []).filter(r => rowMatchesFilter(r, CURRENT_CAT));
+  // Source list depends on the absolute / top-decile toggle.
+  const src = CURRENT_REC_MODE === 'topdecile'
+    ? (DATA.recommendations_topdecile || [])
+    : (DATA.recommendations || []);
+  return src.filter(r => rowMatchesFilter(r, CURRENT_CAT));
 }
 
 function renderKPIs(filteredRows) {
@@ -520,6 +540,7 @@ function renderRecsTable(recs) {
     <th class="num">#</th><th>Conviction</th>
     <th>Action</th><th>Trade direction</th>
     <th>Symbol</th><th>Category</th>
+    <th class="num" title="Rank by |fund_z_30d| within today's full liquid universe (always rebased on the full universe, not the active filter).">Univ rank</th>
     <th>Setup</th>
     <th class="num">Fund (raw / z)</th>
     <th class="num" title="Vol-normalised acceleration of positioning over the last 7d vs the 30d baseline. Bigger |value| = fresher crowdedness, more vulnerable to mean reversion.">Δz</th>
@@ -544,6 +565,7 @@ function renderRecsTable(recs) {
       <td>${tradeDir(r)}</td>
       <td class="sym">${r.symbol}</td>
       <td>${catBadge(r.category)}</td>
+      <td class="num muted">${universeRankCell(r)}</td>
       <td class="muted" style="font-size:12px;">${r.setup}</td>
       <td class="num">
         <span class="${fundCls}">${fmtPct(r.fund_ann_30d)}</span>
@@ -582,6 +604,7 @@ function renderStdTable(rows, target, opts) {
   const head = `<thead><tr>
     ${actionHead}
     <th>Symbol</th><th>Category</th>
+    <th class="num" title="Rank by |fund_z_30d| within today's full liquid universe.">Univ rank</th>
     <th class="num">Funding 30d</th><th class="num">Fund z</th>
     <th class="num">Vol 10d</th>
     <th class="num">Δ 7d−30d</th>
@@ -600,6 +623,7 @@ function renderStdTable(rows, target, opts) {
     ${actionCells}
     <td class="sym">${r.symbol}</td>
     <td>${catBadge(r.category)}</td>
+    <td class="num muted">${universeRankCell(r)}</td>
     <td class="num ${r.fund_ann_30d >= 0 ? 'danger' : 'success'}">${fmtPct(r.fund_ann_30d)}</td>
     <td class="num fund-z-cell ${(r.fund_z_30d ?? 0) >= 0 ? 'danger' : 'success'}">${fmtNum(r.fund_z_30d, 2)}</td>
     <td class="num muted">${r.realised_vol_10d_ann ? r.realised_vol_10d_ann.toFixed(0) + '%' : '—'}</td>
@@ -787,6 +811,7 @@ function renderForCurrentFilter() {
     `${filtered.length} of ${DATA.rows.length} symbols`;
 
   const filteredRecs = getFilteredRecs();
+  updateRecModeHint();
   renderKPIs(filtered);
   renderActionablePanel(filteredRecs);
   renderRecsTable(filteredRecs);
@@ -830,6 +855,27 @@ function setupTabs() {
       renderForCurrentFilter();
     });
   });
+  document.querySelectorAll('#rec-mode-tabs .tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#rec-mode-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      CURRENT_REC_MODE = btn.dataset.mode;
+      renderForCurrentFilter();
+    });
+  });
+}
+
+function updateRecModeHint() {
+  const target = document.getElementById('rec-mode-hint');
+  if (!target || !DATA) return;
+  if (CURRENT_REC_MODE === 'topdecile') {
+    const cutoff = DATA.topdecile_cutoff_fund_z;
+    target.textContent = cutoff != null
+      ? `cutoff |fund_z| ≥ ${cutoff.toFixed(2)} (rebased on full universe)`
+      : '';
+  } else {
+    target.textContent = '|fund_z| > 1.0';
+  }
 }
 
 async function loadData() {
