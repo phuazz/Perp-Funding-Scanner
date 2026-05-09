@@ -25,8 +25,10 @@ import sys
 import json
 import time
 import math
-from datetime import datetime, timezone
+import warnings
+from datetime import datetime, time as dtime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import requests
 import pandas as pd
@@ -82,6 +84,132 @@ CRYPTO_MAJORS = {
     "AVAX", "DOGE", "LINK", "LTC", "DOT", "TRX",
     "MATIC", "TON", "SUI", "APT",
 }
+
+
+# ---------------------------------------------------------------------------
+# US cash-session calendar (NYSE)
+# ---------------------------------------------------------------------------
+# Hardcoded 2026 calendar. NYSE regular session is 09:30-16:00 ET; half-days
+# close at 13:00 ET. Half-day rule for July: when 4 July is a weekday Tue-Fri,
+# 3 July is a half day; when 4 July is Saturday, market is fully closed Friday
+# 3 July (no half day adjacent). Black Friday (day after Thanksgiving) and
+# Christmas Eve are always half days when they fall on a weekday.
+#
+# 2026 calendar:
+#   - 4 July 2026 is Saturday, so observed holiday is Friday 3 July (full close).
+#   - Christmas Eve 2026 (24 Dec) is Thursday — half day.
+#   - Black Friday 2026 (27 Nov) — half day.
+NY_TZ = ZoneInfo("America/New_York")
+US_2026_FULL_CLOSE = {
+    "2026-01-01",  # New Year's Day (Thursday)
+    "2026-01-19",  # MLK Day (3rd Monday January)
+    "2026-02-16",  # Presidents Day (3rd Monday February)
+    "2026-04-03",  # Good Friday
+    "2026-05-25",  # Memorial Day (last Monday May)
+    "2026-06-19",  # Juneteenth (Friday)
+    "2026-07-03",  # Independence Day observed (4 July is Saturday)
+    "2026-09-07",  # Labor Day (1st Monday September)
+    "2026-11-26",  # Thanksgiving (4th Thursday November)
+    "2026-12-25",  # Christmas Day (Friday)
+}
+US_2026_HALF_DAY = {
+    "2026-11-27",  # Day after Thanksgiving
+    "2026-12-24",  # Christmas Eve (Thursday)
+}
+SUPPORTED_CALENDAR_YEAR = 2026
+
+_CALENDAR_WARNED = False
+
+
+def cash_session_open(dt_utc: datetime) -> bool:
+    """Return True if NYSE cash session is open at the given UTC instant.
+
+    Uses zoneinfo to convert to America/New_York; never computes UTC offsets
+    by hand. Half-day = 09:30-13:00 ET. Regular = 09:30-16:00 ET. Open boundary
+    inclusive, close boundary exclusive (16:00:00 ET reads as Closed).
+    Outside the supported calendar year, falls back to weekday + regular
+    session check with a one-time warning (no holidays applied).
+    """
+    if dt_utc.tzinfo is None:
+        dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+    ny = dt_utc.astimezone(NY_TZ)
+    # weekday(): 0=Monday, 6=Sunday (Python stdlib convention).
+    if ny.weekday() >= 5:
+        return False
+    iso_date = ny.strftime("%Y-%m-%d")
+    if ny.year == SUPPORTED_CALENDAR_YEAR:
+        if iso_date in US_2026_FULL_CLOSE:
+            return False
+        close_time = dtime(13, 0) if iso_date in US_2026_HALF_DAY else dtime(16, 0)
+    else:
+        global _CALENDAR_WARNED
+        if not _CALENDAR_WARNED:
+            warnings.warn(
+                f"NYSE calendar hardcoded for {SUPPORTED_CALENDAR_YEAR} only; "
+                f"date {iso_date} falls outside -- using weekday/time check without "
+                f"holiday data. Update US_*_FULL_CLOSE / US_*_HALF_DAY in build.py.",
+                stacklevel=2,
+            )
+            _CALENDAR_WARNED = True
+        close_time = dtime(16, 0)
+    open_time = dtime(9, 30)
+    nt = ny.time()
+    return open_time <= nt < close_time
+
+
+# ---------------------------------------------------------------------------
+# Action state machine
+# ---------------------------------------------------------------------------
+# Maps (fund_z_30d, trend_score, cash_session) → action label.
+#
+#   Live  = funding extreme AND trend confirms trade direction
+#   Stage = funding extreme, trend inflecting (-2 to +2)
+#   Wait  = funding extreme, trend mild-to-moderate against trade (target_score -3 to -5)
+#   Avoid = funding moderate (|fund_z| <= 1.0) OR trend saturated against trade (target_score = -6)
+#
+# target_score = trend_score expressed as alignment with the implied trade:
+#   for Short trade (fund_z > 0): target = -trend_score (positive trend = against)
+#   for Long  trade (fund_z < 0): target =  trend_score (negative trend = against)
+#
+# Cash-hours downgrade: if action would be Live but the underlying TradFi
+# cash session is closed, downgrade to Stage with awaiting_cash_open=True so
+# the dashboard can flag "Wait for cash open to enter".
+ACTION_STATES = ("Live", "Stage", "Wait", "Avoid")
+FUND_Z_QUALIFY_ACTION = 1.0  # threshold to consider funding "extreme" for action machine
+
+
+def compute_action(fund_z: float, trend_score: int, cash_session: str | None,
+                   is_tradfi: bool) -> tuple[str, str | None, bool]:
+    """Return (action, direction, awaiting_cash_open).
+
+    direction is "Long" or "Short" for qualifying funding extremes, else None.
+    awaiting_cash_open True only when cash-hours downgrade fires.
+    """
+    awaiting_cash = False
+    if fund_z is None or abs(fund_z) <= FUND_Z_QUALIFY_ACTION:
+        return ("Avoid", None, awaiting_cash)
+
+    if fund_z > 0:
+        direction = "Short"
+        target_score = -(trend_score or 0)
+    else:
+        direction = "Long"
+        target_score = (trend_score or 0)
+
+    if target_score >= 3:
+        action = "Live"
+    elif -2 <= target_score <= 2:
+        action = "Stage"
+    elif target_score in (-3, -4, -5):
+        action = "Wait"
+    else:  # target_score == -6 (saturated against)
+        action = "Avoid"
+
+    if is_tradfi and action == "Live" and cash_session == "Closed":
+        action = "Stage"
+        awaiting_cash = True
+
+    return (action, direction, awaiting_cash)
 
 
 def categorise(base: str, contract_type: str = "PERPETUAL") -> str:
@@ -370,9 +498,18 @@ def scan(verbose=True):
             # 30d structural baseline. Mean-reversion edge concentrates where this is large.
             fund_z_delta = round(fund_z_7d - fund_z_30d, 3) if (fund_z_7d is not None and fund_z_30d is not None) else None
 
+            # Cash session (TradFi-only) and Action state machine.
+            cat = u["category"]
+            is_tradfi = cat.startswith("TradFi")
+            cash_session = ("Open" if cash_session_open(now) else "Closed") if is_tradfi else None
+            action, action_direction, awaiting_cash_open = compute_action(
+                fund_z_30d, score, cash_session, is_tradfi
+            )
+            trade_direction = f"{action_direction} {sym}" if action_direction else None
+
             rows.append({
                 "symbol": sym,
-                "category": u["category"],
+                "category": cat,
                 "price": round(price, 6),
                 "vol_24h_m": round(vol_m, 2),
                 "px_chg_24h": round(chg_24h, 2),
@@ -392,6 +529,10 @@ def scan(verbose=True):
                 "trend_score": score,
                 "trend_label": trend_label(score),
                 "n_settlements_30d": len(d30),
+                "cash_session": cash_session,
+                "action": action,
+                "trade_direction": trade_direction,
+                "awaiting_cash_open": awaiting_cash_open,
             })
 
             if verbose and (i % 25 == 0 or i == len(universe)):
@@ -420,9 +561,26 @@ def _risk_note(cat, vol_m):
     return ""
 
 
-def build_recommendations(liquid):
+def _sanitise_nans(records):
+    """Replace NaN floats with None in dict records.
+
+    Required because pandas DataFrame.to_dict() converts Python None to NaN in
+    columns with mixed types (e.g. trade_direction with strings + None values).
+    json.dump then writes NaN literally, producing JSON that strict parsers
+    (incl. browser JSON.parse via fetch fallback) reject.
+    """
+    for r in records:
+        for k, v in list(r.items()):
+            # NaN is the only float that compares unequal to itself.
+            if isinstance(v, float) and v != v:
+                r[k] = None
+    return records
+
+
+def build_recommendations(liquid_records):
+    """Build the ranked Recommendations list. Takes pre-sanitised dict records."""
     qualified = []
-    for r in liquid.to_dict(orient="records"):
+    for r in liquid_records:
         fz = r.get("fund_z_30d")
         ts = r.get("trend_score") or 0
         fz_delta = r.get("fund_z_delta")
@@ -463,6 +621,12 @@ def build_recommendations(liquid):
             "carry_pct_14d": carry_pct,
             "vol_24h_m": r["vol_24h_m"],
             "risk_note": _risk_note(r["category"], r["vol_24h_m"]),
+            # Carry the row-level action machinery into the rec record so the
+            # rec table can render Action + Trade direction without a join.
+            "action": r.get("action"),
+            "trade_direction": r.get("trade_direction"),
+            "cash_session": r.get("cash_session"),
+            "awaiting_cash_open": r.get("awaiting_cash_open", False),
         })
 
     qualified.sort(key=lambda x: x["magnitude"], reverse=True)
@@ -489,8 +653,9 @@ def build_payload(rows):
 
     # Liquid universe
     liquid = df[df["vol_24h_m"] >= MIN_VOLUME_USDT_M].copy()
+    liquid_records = _sanitise_nans(liquid.to_dict(orient="records"))
 
-    recommendations = build_recommendations(liquid)
+    recommendations = _sanitise_nans(build_recommendations(liquid_records))
 
     # Legacy headline-symbols list, kept for back-compat with anything reading scan.json.
     headline_syms = [r["symbol"] for r in recommendations if r.get("conviction", 0) >= 2]
@@ -525,7 +690,7 @@ def build_payload(rows):
             "carry_hold_days": CARRY_HOLD_DAYS,
         },
         "summary": summary,
-        "rows": liquid.to_dict(orient="records"),
+        "rows": liquid_records,
         "recommendations": recommendations,
         "headline_symbols": headline_syms,
     }
@@ -536,8 +701,10 @@ def write_output(payload):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     DOCS_DIR.mkdir(parents=True, exist_ok=True)
 
+    # allow_nan=False so any future NaN sneaks fail loudly here rather than
+    # producing JSON that strict browser parsers reject.
     out_json = DATA_DIR / "scan.json"
-    out_json.write_text(json.dumps(payload, indent=2))
+    out_json.write_text(json.dumps(payload, indent=2, allow_nan=False))
     print(f"Wrote {out_json} ({out_json.stat().st_size / 1024:.1f} KB)")
 
     if not TEMPLATE.exists():
@@ -545,7 +712,7 @@ def write_output(payload):
         return
 
     template_html = TEMPLATE.read_text()
-    embedded = json.dumps(payload, separators=(",", ":"))
+    embedded = json.dumps(payload, separators=(",", ":"), allow_nan=False)
     placeholder = "/*__INJECT_DATA__*/null"
     if placeholder not in template_html:
         print(f"WARNING: placeholder {placeholder!r} not in template — docs/index.html will fall back to fetch")

@@ -111,6 +111,19 @@ td.sym { font-weight: 500; }
 .fund-z-cell { font-weight: 500; }
 .dim-cell { color: var(--text-faint); font-size: 11px; }
 .risk-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: rgba(239,159,39,0.12); color: var(--warning); white-space: nowrap; }
+.action { display: inline-block; padding: 2px 9px; border-radius: 4px; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; white-space: nowrap; }
+.action-live  { background: rgba(15,110,86,0.15);  color: var(--success); }
+.action-stage { background: rgba(239,159,39,0.15); color: var(--warning); }
+.action-wait  { background: var(--bg-soft);        color: var(--text-muted); border: 1px solid var(--border); }
+.action-avoid { background: rgba(163,45,45,0.12);  color: var(--danger); }
+.action-stage[data-cash-blocked="1"] { box-shadow: inset 0 0 0 1px rgba(239,159,39,0.55); }
+.cash { display: inline-block; padding: 1px 6px; font-size: 10px; border-radius: 3px; letter-spacing: 0.04em; }
+.cash-open   { background: rgba(15,110,86,0.10);  color: var(--success); }
+.cash-closed { background: rgba(127,127,127,0.12); color: var(--text-muted); }
+.action-legend { font-size: 11px; color: var(--text-muted); padding: 6px 12px; margin-bottom: 8px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 6px; line-height: 1.6; }
+.action-legend .action { margin-right: 4px; vertical-align: 1px; }
+.dir-long  { color: var(--success); font-weight: 500; white-space: nowrap; }
+.dir-short { color: var(--danger);  font-weight: 500; white-space: nowrap; }
 @media (max-width: 800px) {
   .container { padding: 16px; }
   header { flex-direction: column; align-items: flex-start; }
@@ -149,7 +162,16 @@ td.sym { font-weight: 500; }
 </section>
 
 <section>
-  <h2>Recommendations<span class="hint">|fund_z| &gt; 1.0 with trend confirmation — ranked by |fund_z| × trend alignment</span></h2>
+  <h2>Recommendations<span class="hint">|fund_z| &gt; 1.0 with trend confirmation — ranked by |fund_z| × trend alignment × (1 + |Δz|)</span></h2>
+  <div class="action-legend">
+    <span class="action action-live">Live</span> trend confirms in trade direction
+    &nbsp;·&nbsp;
+    <span class="action action-stage">Stage</span> trend inflecting (score −2 to +2) or cash session closed
+    &nbsp;·&nbsp;
+    <span class="action action-wait">Wait</span> trend mildly against trade
+    &nbsp;·&nbsp;
+    <span class="action action-avoid">Avoid</span> funding moderate or trend saturated against
+  </div>
   <div id="tbl-recs"></div>
 </section>
 
@@ -188,12 +210,30 @@ td.sym { font-weight: 500; }
 </section>
 
 <section>
-  <h2>Stretched longs<span class="hint">positive funding ranked descending — wait if trend still up</span></h2>
+  <h2>Stretched longs<span class="hint">positive funding ranked descending — Action column tells you whether to engage now or wait</span></h2>
+  <div class="action-legend">
+    <span class="action action-live">Live</span> trend rolling over confirms short
+    &nbsp;·&nbsp;
+    <span class="action action-stage">Stage</span> trend inflecting or cash closed
+    &nbsp;·&nbsp;
+    <span class="action action-wait">Wait</span> trend still up
+    &nbsp;·&nbsp;
+    <span class="action action-avoid">Avoid</span> funding moderate or trend saturated up
+  </div>
   <div id="tbl-stretched"></div>
 </section>
 
 <section>
-  <h2>Crowded shorts<span class="hint">negative funding ranked ascending — wait if trend still down</span></h2>
+  <h2>Crowded shorts<span class="hint">negative funding ranked ascending — Action column tells you whether to engage now or wait</span></h2>
+  <div class="action-legend">
+    <span class="action action-live">Live</span> trend reclaiming confirms long
+    &nbsp;·&nbsp;
+    <span class="action action-stage">Stage</span> trend inflecting or cash closed
+    &nbsp;·&nbsp;
+    <span class="action action-wait">Wait</span> trend still down
+    &nbsp;·&nbsp;
+    <span class="action action-avoid">Avoid</span> funding moderate or trend saturated down
+  </div>
   <div id="tbl-crowded"></div>
 </section>
 
@@ -311,12 +351,25 @@ function sparkline(values, w = 80, h = 22) {
   </svg>`;
 }
 
-function readLabel(r) {
-  if (r.fund_ann_30d > 30 && r.trend_score <= -3) return '<span class="danger" style="font-weight:500;">Short setup</span>';
-  if (r.fund_ann_30d > 30 && r.trend_score >= 3) return '<span class="muted">Wait for roll</span>';
-  if (r.fund_ann_30d < -15 && r.trend_score >= 3) return '<span class="success" style="font-weight:500;">Long setup</span>';
-  if (r.fund_ann_30d < -15 && r.trend_score <= -3) return '<span class="muted">Capitulation ongoing</span>';
-  return '<span class="muted" style="opacity:0.7;">Watch</span>';
+// Action / Trade direction / Cash badges. Action state and trade_direction are
+// computed server-side in build.py; renderers below are pure formatters.
+function actionBadge(r) {
+  const a = r.action || 'Avoid';
+  const cls = 'action-' + a.toLowerCase();
+  const blocked = r.awaiting_cash_open ? '1' : '0';
+  const title = r.awaiting_cash_open
+    ? 'Live trade conditions met but cash session closed — wait for NYSE 09:30 ET to enter'
+    : '';
+  return `<span class="action ${cls}" data-cash-blocked="${blocked}" title="${title}">${a}</span>`;
+}
+function tradeDir(r) {
+  if (!r.trade_direction) return '<span class="muted">—</span>';
+  const cls = r.trade_direction.startsWith('Long') ? 'dir-long' : 'dir-short';
+  return `<span class="${cls}">${r.trade_direction}</span>`;
+}
+function cashBadge(cash) {
+  if (cash === null || cash === undefined) return '<span class="muted dim-cell">—</span>';
+  return `<span class="cash cash-${cash.toLowerCase()}">${cash}</span>`;
 }
 
 // Page-level filter: "TradFi" matches both equity and commodity; otherwise exact match.
@@ -361,18 +414,20 @@ function renderRecsTable(recs) {
     return;
   }
   const head = `<thead><tr>
-    <th class="num">#</th><th>Conviction</th><th>Symbol</th><th>Category</th>
-    <th>Side</th><th>Setup</th>
+    <th class="num">#</th><th>Conviction</th>
+    <th>Action</th><th>Trade direction</th>
+    <th>Symbol</th><th>Category</th>
+    <th>Setup</th>
     <th class="num">Fund (raw / z)</th>
     <th class="num" title="Vol-normalised acceleration of positioning over the last 7d vs the 30d baseline. Bigger |value| = fresher crowdedness, more vulnerable to mean reversion.">Δz</th>
     <th class="num">Trend</th>
     <th class="num">Stop (7d)</th>
     <th class="num">14d carry</th>
     <th class="num">24h vol</th>
+    <th>Cash</th>
     <th>Risk</th>
   </tr></thead>`;
   const body = recs.map((r, i) => {
-    const sideCls = r.side === 'Short perp' ? 'side-short' : 'side-long';
     const fundCls = r.fund_ann_30d >= 0 ? 'danger' : 'success';
     const zCls = r.fund_z_30d >= 0 ? 'danger' : 'success';
     const dz = r.fund_z_delta;
@@ -380,9 +435,10 @@ function renderRecsTable(recs) {
     return `<tr>
       <td class="num muted">${i + 1}</td>
       <td>${convChip(r.conviction)}</td>
+      <td>${actionBadge(r)}</td>
+      <td>${tradeDir(r)}</td>
       <td class="sym">${r.symbol}</td>
       <td>${catBadge(r.category)}</td>
-      <td class="${sideCls}">${r.side}</td>
       <td class="muted" style="font-size:12px;">${r.setup}</td>
       <td class="num">
         <span class="${fundCls}">${fmtPct(r.fund_ann_30d)}</span>
@@ -394,18 +450,30 @@ function renderRecsTable(recs) {
       <td class="num">${fmtPx(r.stop_price)}</td>
       <td class="num muted">${r.carry_pct_14d.toFixed(2)}%</td>
       <td class="num muted">${fmtVol(r.vol_24h_m)}</td>
+      <td>${cashBadge(r.cash_session)}</td>
       <td>${r.risk_note ? `<span class="risk-tag">${r.risk_note}</span>` : ''}</td>
     </tr>`;
   }).join('');
   target.innerHTML = `<table>${head}<tbody>${body}</tbody></table>`;
 }
 
-function renderStdTable(rows, target) {
+// renderStdTable optionally renders Action + Trade direction + Cash columns.
+// Stretched longs / Crowded shorts get them (showAction=true, default). The
+// Positioning acceleration table omits them (showAction=false) since that
+// table is a "what is moving" view, not a "what to do" view.
+function renderStdTable(rows, target, opts) {
+  opts = opts || {};
+  const showAction = opts.showAction !== false;
   if (!rows.length) {
     document.getElementById(target).innerHTML = '<div class="muted" style="padding: 16px;">No rows for this filter.</div>';
     return;
   }
+  const actionHead = showAction
+    ? '<th>Action</th><th>Trade direction</th>'
+    : '';
+  const cashHead = showAction ? '<th>Cash</th>' : '';
   const head = `<thead><tr>
+    ${actionHead}
     <th>Symbol</th><th>Category</th>
     <th class="num">Funding 30d</th><th class="num">Fund z</th>
     <th class="num">Vol 10d</th>
@@ -413,9 +481,16 @@ function renderStdTable(rows, target) {
     <th class="num" title="Vol-normalised positioning acceleration: fund_z_7d − fund_z_30d. Bigger |value| = fresher crowdedness.">Δz</th>
     <th class="num">Px Δ30d</th>
     <th class="num">Score</th><th class="center">Trend</th>
-    <th>30d funding</th><th>Read</th>
+    <th>30d funding</th>
+    ${cashHead}
   </tr></thead>`;
-  const body = rows.map(r => `<tr>
+  const body = rows.map(r => {
+    const actionCells = showAction
+      ? `<td>${actionBadge(r)}</td><td>${tradeDir(r)}</td>`
+      : '';
+    const cashCell = showAction ? `<td>${cashBadge(r.cash_session)}</td>` : '';
+    return `<tr>
+    ${actionCells}
     <td class="sym">${r.symbol}</td>
     <td>${catBadge(r.category)}</td>
     <td class="num ${r.fund_ann_30d >= 0 ? 'danger' : 'success'}">${fmtPct(r.fund_ann_30d)}</td>
@@ -427,8 +502,9 @@ function renderStdTable(rows, target) {
     <td class="num">${r.trend_score >= 0 ? '+' : ''}${r.trend_score}</td>
     <td class="center">${trendIcon(r.trend_label)}</td>
     <td class="spark-cell">${sparkline(r.fund_spark)}</td>
-    <td>${readLabel(r)}</td>
-  </tr>`).join('');
+    ${cashCell}
+  </tr>`;
+  }).join('');
   document.getElementById(target).innerHTML = `<table>${head}<tbody>${body}</tbody></table>`;
 }
 
@@ -617,7 +693,7 @@ function renderForCurrentFilter() {
   const regime = [...filtered]
     .filter(r => r.fund_z_delta !== null && r.fund_z_delta !== undefined)
     .sort((a, b) => Math.abs(b.fund_z_delta) - Math.abs(a.fund_z_delta)).slice(0, 20);
-  renderStdTable(regime, 'tbl-regime');
+  renderStdTable(regime, 'tbl-regime', { showAction: false });
 
   renderDistributions(filtered);
   renderQuadrant(filtered);
