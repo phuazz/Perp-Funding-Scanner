@@ -54,7 +54,7 @@ TEMPLATE = REPO_ROOT / "template.html"
 
 TRADFI_COMMODITY_BASES = {
     "XAG", "XAU", "XPT", "XPD",
-    "OIL", "WTI", "BRENT", "CL", "NATGAS", "NGAS",
+    "OIL", "WTI", "BRENT", "CL", "BZ", "NATGAS", "NGAS",
     "COPPER", "URANIUM", "CORN", "WHEAT", "SOY",
     "COCOA", "COFFEE", "SUGAR", "COTTON",
 }
