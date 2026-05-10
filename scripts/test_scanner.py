@@ -64,6 +64,8 @@ def at_ny(iso: str) -> datetime:
 def test_data_files_exist() -> None:
     check("data/scan.json exists", SCAN_PATH.exists(), str(SCAN_PATH))
     check("docs/index.html exists", DOCS_PATH.exists(), str(DOCS_PATH))
+    methodology = REPO_ROOT / "docs" / "methodology.html"
+    check("docs/methodology.html exists", methodology.exists(), str(methodology))
 
 
 def test_json_parses_and_has_required_top_level() -> None:
