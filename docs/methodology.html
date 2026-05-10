@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Methodology — Binance USD-M Funding Scanner</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --bg-soft: #f7f7f5;
+  --text: #1a1a1a;
+  --text-muted: #5f5e5a;
+  --text-faint: #888780;
+  --border: rgba(0,0,0,0.08);
+  --border-strong: rgba(0,0,0,0.16);
+  --danger: #A32D2D;
+  --success: #0F6E56;
+  --warning: #854F0B;
+  --info: #185FA5;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+.container { max-width: 820px; margin: 0 auto; padding: 32px 32px 80px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding-bottom: 20px; border-bottom: 1px solid var(--border); margin-bottom: 32px; flex-wrap: wrap; }
+header h1 { margin: 0; font-size: 22px; font-weight: 500; letter-spacing: -0.01em; }
+header .back-link { font-size: 13px; color: var(--info); text-decoration: none; }
+header .back-link:hover { text-decoration: underline; }
+h2 { margin: 36px 0 12px; font-size: 18px; font-weight: 500; letter-spacing: -0.005em; color: var(--text); }
+h2:first-of-type { margin-top: 0; }
+h3 { margin: 24px 0 8px; font-size: 15px; font-weight: 500; color: var(--text); }
+p { margin: 0 0 12px; color: var(--text); }
+p.muted { color: var(--text-muted); }
+ul, ol { padding-left: 24px; margin: 0 0 16px; color: var(--text); }
+li { margin-bottom: 6px; }
+code { font-family: ui-monospace, 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 13px; background: var(--bg-soft); padding: 1px 5px; border-radius: 3px; }
+pre { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; font-size: 13px; line-height: 1.55; overflow-x: auto; margin: 8px 0 16px; }
+pre code { background: none; padding: 0; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 8px 0 18px; }
+thead tr { border-bottom: 1px solid var(--border-strong); }
+th { text-align: left; padding: 8px 10px; font-weight: 500; font-size: 13px; color: var(--text-muted); }
+td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.callout { background: var(--bg-soft); border: 1px solid var(--border); border-left: 3px solid var(--warning); border-radius: 6px; padding: 12px 16px; margin: 14px 0 18px; font-size: 14px; color: var(--text-muted); }
+.callout strong { color: var(--text); }
+.danger-text { color: var(--danger); }
+.success-text { color: var(--success); }
+.warning-text { color: var(--warning); }
+.section-hint { font-size: 13px; color: var(--text-faint); font-weight: 400; }
+.toc { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 6px; padding: 14px 18px; margin-bottom: 32px; }
+.toc h3 { margin: 0 0 8px; font-size: 13px; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+.toc ul { columns: 2; column-gap: 32px; padding-left: 18px; margin: 0; font-size: 13px; }
+.toc a { color: var(--info); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+@media (max-width: 700px) { .toc ul { columns: 1; } .container { padding: 20px 16px 60px; } }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>Methodology<span class="section-hint" style="margin-left: 8px;">Binance USD-M funding scanner</span></h1>
+  <a href="./" class="back-link">&larr; back to dashboard</a>
+</header>
+
+<div class="toc">
+  <h3>On this page</h3>
+  <ul>
+    <li><a href="#fund-z">fund_z</a></li>
+    <li><a href="#delta-z">Δz (freshness)</a></li>
+    <li><a href="#trend-score">Trend score</a></li>
+    <li><a href="#action-state">Action state machine</a></li>
+    <li><a href="#carry">Three-scenario carry</a></li>
+    <li><a href="#roundtrip">Round-trip cost</a></li>
+    <li><a href="#backtest">90d track record</a></li>
+    <li><a href="#limitations">Known limitations</a></li>
+  </ul>
+</div>
+
+<h2 id="fund-z">fund_z</h2>
+<p>Vol-normalised funding rate. Defined as:</p>
+<pre><code>fund_z_30d = fund_ann_30d / realised_vol_10d_ann</code></pre>
+<p>where <code>fund_ann_30d</code> is the 30-day average annualised funding rate (per cent / year) and <code>realised_vol_10d_ann</code> is the 10-day realised volatility annualised by &radic;365 (using daily close-to-close log returns).</p>
+<p>Reading: how many vol units of carry the trade earns annualised. A perp paying +30 % funding at 15 % vol reads <code>+2.0</code>; at 200 % vol it reads <code>+0.15</code>. Interpret as a Sharpe ratio of the funding leg.</p>
+<p class="muted"><strong>Why use it.</strong> Raw funding is dominated by the asset's underlying volatility distribution. A cross-sectional ranking by raw funding effectively ranks by volatility, not positioning extremity. Vol normalisation restates funding as a risk-adjusted carry, comparable across XAU at 15 % vol and a memecoin at 200 % vol.</p>
+
+<h2 id="delta-z">&Delta;z &mdash; freshness vs chronic</h2>
+<p>Vol-normalised positioning acceleration:</p>
+<pre><code>fund_z_delta = fund_z_7d - fund_z_30d</code></pre>
+<p>Bigger <code>|&Delta;z|</code> means positioning has accelerated past its 30d structural baseline in the last week. The mean-reversion edge concentrates in fresh setups, not chronic ones: a perp that has been at +50 % funding for the entire month has already absorbed its forced unwinds; one that went from +5 % to +50 % in the last week has fresh, undisciplined flow that is more likely to revert.</p>
+<p>The Recommendations composite weights freshness explicitly:</p>
+<pre><code>magnitude = |fund_z_30d| &times; max(|trend_score|/6, 0.5) &times; (1 + |&Delta;z|)</code></pre>
+
+<h2 id="trend-score">Trend score &mdash; 7-signal MA stack</h2>
+<p>Integer in <code>[&minus;6, +6]</code>. Sum of seven sub-signals on the 10/20/50-day moving-average stack of daily closes:</p>
+<ol>
+  <li>Price vs 10d MA (&plusmn;1)</li>
+  <li>Price vs 20d MA (&plusmn;1)</li>
+  <li>Price vs 50d MA (&plusmn;1)</li>
+  <li>10d MA slope, 5d ROC (&plusmn;1)</li>
+  <li>20d MA slope, 5d ROC (&plusmn;1)</li>
+  <li>10d MA vs 20d MA cross (&plusmn;1)</li>
+  <li>20d MA vs 50d MA cross (&plusmn;1)</li>
+</ol>
+<p>Each sub-signal contributes &minus;1 / 0 / +1. Score clamped to <code>[&minus;6, +6]</code>. Visual mapping:</p>
+<ul>
+  <li><strong>up</strong>: score &ge; +3</li>
+  <li><strong>flat</strong> (inflecting): &minus;2 to +2</li>
+  <li><strong>down</strong>: score &le; &minus;3</li>
+</ul>
+
+<h2 id="action-state">Action state machine</h2>
+<p>For every liquid row, the dashboard maps <code>(fund_z_30d, trend_score, cash_session)</code> to one of four states. Implied trade direction is Short when <code>fund_z &gt; 0</code> (stretched longs to fade) and Long when <code>fund_z &lt; 0</code> (crowded shorts to reclaim). <code>target_score</code> is <code>trend_score</code> aligned with the trade direction (positive means trend agrees).</p>
+
+<table>
+  <thead>
+    <tr><th>Condition</th><th>State</th><th>Meaning</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>|fund_z| &le; 1.0</code></td><td><strong>Avoid</strong></td><td>Funding moderate; signal too weak.</td></tr>
+    <tr><td><code>target_score &ge; +3</code></td><td><strong class="success-text">Live</strong></td><td>Funding extreme AND trend confirms trade direction.</td></tr>
+    <tr><td><code>&minus;2 &le; target_score &le; +2</code></td><td><strong class="warning-text">Stage</strong></td><td>Funding extreme, trend inflecting; conditions forming.</td></tr>
+    <tr><td><code>target_score in &minus;5..&minus;3</code></td><td><strong>Wait</strong></td><td>Funding extreme but trend mildly against; rollable.</td></tr>
+    <tr><td><code>target_score = &minus;6</code></td><td><strong class="danger-text">Avoid</strong></td><td>Trend at maximum saturation against trade; do not fade.</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Cash-hours downgrade.</strong> For TradFi-Equity and TradFi-Commodity rows, if the action would be Live but the NYSE cash session is closed (weekend, holiday, or outside 09:30&ndash;16:00 ET), the action is downgraded to Stage with <code>awaiting_cash_open=true</code>. The intent is to discourage entries during off-hours when basis can dislocate from the underlying.</p>
+
+<h2 id="carry">Three-scenario 14-day carry</h2>
+<p>The funding leg of a trade earns or pays based on its current rate. Three scenarios are reported for the next 14 days, all expressed as a percentage of notional:</p>
+<table>
+  <thead>
+    <tr><th>Scenario</th><th>Definition</th><th>Carry (when entered with the carry)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Persists</strong></td><td>Rate stays at current level for 14 days.</td><td><code>+|F| &times; 14/365</code></td></tr>
+    <tr><td><strong>Decay</strong></td><td>Rate decays linearly to 0 over 14 days.</td><td><code>+|F| &times; 7/365</code> (avg = |F|/2)</td></tr>
+    <tr><td><strong>Flip</strong></td><td>Rate stays current for 7 days, then flips to <code>&minus;current</code> for days 7&ndash;14.</td><td><code>0</code> by symmetry</td></tr>
+  </tbody>
+</table>
+<p class="muted">Flip is the spec'd "mean reversion of funding itself" scenario. Net carry over 14 days is exactly zero by the symmetry of the +F and &minus;F halves; the trade's funding income earned in the first half is paid back in the second.</p>
+
+<h2 id="roundtrip">Round-trip cost</h2>
+<p>Minimum favourable move needed in the underlying to break even on costs alone:</p>
+<pre><code>roundtrip_cost_pct = 0.10 + |fund_ann_30d| &times; 14/365</code></pre>
+<p>Composed of 10 bps slippage round-trip (5 bps in + 5 bps out) plus the magnitude of fully-adverse 14-day funding. This worst-case bound exceeds the spec'd "flip" scenario (which nets to 0) and is more useful for sizing decisions: it answers "what if everything goes wrong on funding?"</p>
+
+<h2 id="backtest">90d track record</h2>
+<p>Rule-based historical backtest computed on every liquid instrument that has at least 38 daily klines and 30 days of prior funding history at every signal day.</p>
+<p><strong>Signal definition.</strong> At each historical day <em>d</em>, compute mean 30d annualised funding from the prior 30 daily settlements. Fire a Short signal when the mean exceeds <code>+30 %/yr</code>; a Long signal when below <code>&minus;15 %/yr</code>. Same raw thresholds the dashboard uses for its KPIs.</p>
+<p><strong>Trade rule.</strong> Enter on close at <em>d</em>. Hold to close at <em>d+7</em> unless price hits the prior 7-day swing in the trade-against direction first (stop). PnL recorded gross of slippage, fees, and intra-period funding flows.</p>
+<p><strong>Outputs.</strong></p>
+<ul>
+  <li><code>signal_count</code>: total signals fired in the historical window.</li>
+  <li><code>hit_rate</code>: fraction of signals with positive PnL.</li>
+  <li><code>profit_factor</code>: gross winners / gross losers (None when no losses, 0 when no wins).</li>
+</ul>
+<p>An instrument with <code>signal_count = 0</code> renders as <strong>Untested</strong> rather than reporting 0 % hit rate.</p>
+
+<div class="callout"><strong>Caveats baked in.</strong>
+<ul>
+  <li>The historical signal uses raw funding thresholds, not the live <code>fund_z &gt; 1.0</code> rule. Computing historical <code>fund_z</code> requires historical realised volatility; using today's vol everywhere would introduce look-ahead bias. The raw-threshold proxy is conservative and counts more signals than the live rule would.</li>
+  <li>No trend confirmation in the historical signal. Live recommendations require trend alignment.</li>
+  <li>PnL is gross of slippage, fees, and intra-period funding payments. Live execution will be lower.</li>
+  <li>Sample size: on a 90d window with daily resolution, an instrument can fire at most ~83 signals. Many newer listings have far fewer. Treat <code>signal_count &lt; 20</code> as low-power.</li>
+</ul></div>
+
+<h2 id="limitations">Known limitations</h2>
+
+<h3>TradFi delisting risk</h3>
+<p>Binance's tokenised stocks programme (BSTOCK) was suspended in mid-2021 under regulatory pressure. The current TradFi USD-M perps re-launched as <code>TRADIFI_PERPETUAL</code> contracts could be paused or delisted with limited notice. Position sizing should assume a 2&ndash;3 day forced-unwind window.</p>
+
+<h3>Weekend and off-hours liquidity</h3>
+<p>TradFi perps trade 24/7 on Binance even when the underlying cash market is closed. Spreads widen, depth thins, and basis dislocations are larger off-hours. The Cash column flags this; the Action machine downgrades Live to Stage when cash is closed.</p>
+
+<h3>Funding rate flip risk</h3>
+<p>Positioning crowdedness can normalise within hours of a regime change. The freshness multiplier captures short-term acceleration but does not predict speed of reversion. The flip scenario in the carry tuple represents this risk numerically; round-trip cost prices a fully adverse funding outcome.</p>
+
+<h3>Off-hours basis dislocations</h3>
+<p>For TradFi names, perp price during off-hours is set by overnight order flow only. Implied entries computed from current perp price may not be achievable at the underlying's next cash open. The "Wait for cash open" downgrade is intended to surface this; it is not a formal lock.</p>
+
+<h3>Look-ahead bias in the 90d backtest</h3>
+<p>The historical signal logic uses look-back-only inputs (30d trailing funding mean, prior 7d swing for stop). The simplification of using raw funding thresholds rather than vol-normalised z-scores is to avoid baking today's realised vol into a historical decision; a more rigorous backtest would store historical vol estimates per day and recompute fund_z forward only. That work is queued.</p>
+
+<h3>Data refresh and staleness</h3>
+<p>Refresh cadence is twice daily at 08:00 and 20:00 SGT via local Task Scheduler. The dashboard renders a stale-data banner if data is more than 18 hours old. The previous successful refresh's <code>data/scan.json</code> is retained on failure.</p>
+
+</div>
+</body>
+</html>
