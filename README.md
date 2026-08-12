@@ -100,7 +100,11 @@ npx serve .                 # then open http://localhost:3000/template.html
 
 Twice daily at 08:00 SGT and 20:00 SGT via local Task Scheduler. `StartWhenAvailable` is set, so a missed run (laptop asleep) catches up at next wake within the daily window.
 
-If a scan fails (Binance rate limit, schema change), `local_refresh.ps1` keeps the previous `scan.json`, logs the error to `logs/refresh.log`, and exits non-zero — Task Scheduler will show the failure in its history. The dashboard shows a stale-data banner if the data is more than 18 hours old.
+That catch-up behaviour has a cost: a run firing at wake often finds the network stack not yet up. Every failure in the fortnight to 2026-08-12 was a DNS resolution error on such a delayed start (08:15, 09:00 and 21:33, against a normal 08:03 / 20:03), each discarding half a day of data for a condition that clears itself in seconds. `local_refresh.ps1` therefore waits for the API before scanning: it resolves the host and then calls the ping endpoint — a resolver can answer from cache while the route is still down — retrying for up to five minutes. The scheduled task additionally carries `RestartCount = 3` at ten-minute intervals, which covers the script failing to launch at all.
+
+If a scan fails (Binance rate limit, schema change), `local_refresh.ps1` keeps the previous `scan.json`, logs the error to `logs/refresh.log`, and exits non-zero — Task Scheduler will show the failure in its history. Exit code 2 is reserved for a connectivity stall so it stays distinguishable from a genuine scan failure. The dashboard shows a stale-data banner if the data is more than 18 hours old.
+
+**Liveness signal.** A healthy run touches `logs/last_success.txt`, including the healthy no-change case. This exists because the commit history cannot serve as the heartbeat on its own: it moves only when the data changes, so a run that fires and fails writes nothing and looks exactly like a run with nothing to write. That blind spot is normally closed by watching the CI run, which is not available here since the GitHub Actions half was retired in May (see above). The vault's `fleet_watch` reads the sentinel as `perp-funding local run` with a 24-hour tolerance, which absorbs one missed run of the twice-daily pair. The file is machine-local and gitignored.
 
 ## Known limitations
 

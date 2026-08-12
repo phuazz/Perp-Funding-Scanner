@@ -6,6 +6,9 @@ __pycache__/
 *.swp
 *.log
 .claude/
+# Local liveness sentinel written by scripts/local_refresh.ps1 and read by
+# fleet_watch. Machine-local runtime state, not a repository artefact.
+logs/last_success.txt
 # Per-symbol funding history intermediates (if ever produced).
 # The committed source of truth is data/funding_history.json (single file).
 data/funding_history/
