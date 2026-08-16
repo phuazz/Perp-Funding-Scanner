@@ -1,6 +1,6 @@
 # Binance USD-M funding scanner
 
-Scans the full Binance USD-M perpetual universe (~500 symbols) for paid-direction trade opportunities by combining funding extremity with multi-timeframe trend confirmation.
+Scans the full Binance USD-M perpetual universe (~700 symbols) for paid-direction trade opportunities by combining funding extremity with multi-timeframe trend confirmation, and compares funding on the same underlying against Hyperliquid (core perps + trade.xyz HIP-3 markets) over matched trailing windows.
 
 Live dashboard: `https://phuazz.github.io/Perp-Funding-Scanner/`
 
@@ -10,6 +10,48 @@ Live dashboard: `https://phuazz.github.io/Perp-Funding-Scanner/`
 - **Funding-vs-price quadrant chart**: coloured by trend status, filterable by category
 - **Stretched longs / crowded shorts**: full ranked tables with sparklines
 - **Regime shifts**: 7d funding deviation from 30d baseline
+- **Cross-venue funding (Hyperliquid, added 2026-08-16)**: same underlying on both venues, 30d/7d trailing windows computed with the identical annualisation on each side, plus an index/sector watchlist (xyz:SP500, XYZ100, SMH, XLE, SOXL, URNM, GOLD, EWY, EWJ)
+
+## Cross-venue methodology and guards (2026-08-16)
+
+Instantaneous funding snapshots are not comparable across venues — the day the
+extension was built, xyz:SKHX printed −24%/yr spot against a +33%/yr 30d mean.
+Both venues therefore publish the same construction: mean per-settlement rate
+in the trailing window × settlements/year × 100, longs pay when positive,
+windows 30d and 7d anchored at the scan instant. Spread = Binance −
+Hyperliquid; positive means longs pay more on Binance.
+
+Pairing rules (`scripts/hyperliquid_funding.py`):
+
+- **Routing**: TradFi rows match only trade.xyz markets; crypto rows match only
+  the Hyperliquid core book (a name collision must not cross venues).
+- **exact / alias** (e.g. `SKHYNIXUSDT` ↔ `xyz:SKHX`, `XAUUSDT` ↔ `xyz:GOLD`):
+  published only if the two venues' prices agree within ±5% (identity gate;
+  rejections are listed in `scan.json` and counted on the dashboard).
+- **proxy** (`SPY`/`SPX` ↔ `xyz:SP500`, `QQQ`/`NDX` ↔ `xyz:XYZ100`): related but
+  not identical underlyings — funding is scale-free so the comparison stands,
+  prices do not; labelled on the dashboard.
+- **k-prefix**: Binance `1000PEPE` ↔ Hyperliquid `kPEPE` (both quote 1000 units).
+
+Guard layers, per the vault's unattended-agent rule (fail-open but loud):
+
+1. **Identity gate** as above — wrong-instrument pairs are dropped, visibly.
+2. **Completeness gate**: a market whose fetched window is materially short
+   (span < 25d or records < 60% of the detected cadence's expectation) is
+   flagged `partial` and its spreads are suppressed.
+3. **Sentinel cross-check**: Binance 30d funding for BTC/ETH/SOL is recomputed
+   with an independent method (sum over actual span × 365) and compared to the
+   published mean × interval value; disagreement beyond max(1.5pp, 12%)
+   degrades the block — hl columns stay, spreads are suppressed, banner shown.
+4. **Fail-open**: any Hyperliquid failure leaves the Binance scan untouched and
+   sets `hyperliquid.status` to `unavailable`, which the dashboard banners.
+
+Outputs: `hl_*` and `spread_ann_*` fields on matched rows in `data/scan.json`,
+a `hyperliquid` block (status, sentinel result, rejected pairs, watchlist), and
+`data/hl_funding_daily.json` (mean rate per UTC day per market, for spread-
+persistence studies). Unit tests: `pytest tests/` (16 tests, including the
+mandatory month- and year-boundary date cases). Runtime cost: roughly +2–4
+minutes per scan at a polite 0.35s spacing; no API key on either venue.
 
 ## Signal logic
 
@@ -37,13 +79,16 @@ Each signal contributes −1 / 0 / +1. Score clamped to [−6, +6].
 ## Architecture
 
 ```
-template.html                  source of truth, fetch fallback for dev
-scripts/build.py               scans Binance, writes JSON, builds docs/index.html
-scripts/local_refresh.ps1      Task Scheduler wrapper: scan + commit + push
-data/scan.json                 latest scan output (committed by local cron)
-docs/index.html                GitHub Pages output (template + injected data)
-logs/refresh.log               local refresh log (gitignored)
-.github/workflows/refresh.yml  manual-dispatch only (geo-block on US runners)
+template.html                    source of truth, fetch fallback for dev
+scripts/build.py                 scans Binance, writes JSON, builds docs/index.html
+scripts/hyperliquid_funding.py   cross-venue enrichment (pairing, gates, sentinel)
+scripts/local_refresh.ps1        Task Scheduler wrapper: scan + commit + push
+tests/                           unit tests for the cross-venue module (pytest)
+data/scan.json                   latest scan output (committed by local cron)
+data/hl_funding_daily.json       Hyperliquid daily-mean funding per market (30d)
+docs/index.html                  GitHub Pages output (template + injected data)
+logs/refresh.log                 local refresh log (gitignored)
+.github/workflows/refresh.yml    manual-dispatch only (geo-block on US runners)
 ```
 
 ## Setup

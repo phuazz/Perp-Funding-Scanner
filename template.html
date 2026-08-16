@@ -33,6 +33,7 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
 }
 .container { max-width: 1400px; margin: 0 auto; padding: 24px 32px 60px; }
 header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
@@ -77,7 +78,7 @@ td.sym { font-weight: 500; }
 .danger { color: var(--danger); }
 .success { color: var(--success); }
 .muted { color: var(--text-muted); }
-.badge { display: inline-block; padding: 2px 8px; font-size: 10px; border-radius: 4px; font-weight: 500; white-space: nowrap; }
+.badge { display: inline-block; padding: 2px 8px; font-size: 11px; border-radius: 4px; font-weight: 500; white-space: nowrap; }
 .badge-cat-equity { background: rgba(213,90,48,0.15); color: #993C1D; }
 .badge-cat-commodity { background: rgba(239,159,39,0.15); color: #854F0B; }
 .badge-cat-major { background: rgba(55,138,221,0.15); color: #185FA5; }
@@ -94,9 +95,18 @@ td.sym { font-weight: 500; }
 .score-bar-fill.neg { background: var(--danger); right: 50%; }
 .score-bar-mid { position: absolute; top: 0; left: 50%; width: 1px; height: 100%; background: var(--border-strong); }
 .spark-cell { width: 90px; }
+/* Every data table scrolls inside its own container so narrow viewports
+   never get page-level horizontal scroll. */
+#tbl-recs, #tbl-stretched, #tbl-crowded, #tbl-regime, #tbl-hl-pairs, #tbl-hl-watchlist { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.badge-pair-exact { background: rgba(24,95,165,0.12); color: var(--info); }
+.badge-pair-alias { background: rgba(24,95,165,0.12); color: var(--info); }
+.badge-pair-proxy { background: rgba(239,159,39,0.15); color: var(--warning); }
+.badge-pair-partial { background: var(--bg-soft); color: var(--text-faint); border: 1px dashed var(--border-strong); }
+.hl-provenance { font-size: 11px; color: var(--text-muted); padding: 6px 12px; margin-bottom: 10px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 6px; line-height: 1.6; max-width: 70ch; }
+.spread-cell { font-weight: 500; }
 .error-banner { background: var(--danger-bg); color: var(--danger); padding: 12px 16px; border-radius: 8px; margin: 16px 0; font-size: 13px; }
 .stale-banner { background: rgba(239,159,39,0.1); color: var(--warning); padding: 12px 16px; border-radius: 8px; margin: 16px 0; font-size: 13px; }
-.footer-note { margin-top: 32px; padding: 16px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; color: var(--text-muted); line-height: 1.7; }
+.footer-note { margin-top: 32px; padding: 16px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; color: var(--text-muted); line-height: 1.7; max-width: 70ch; }
 .footer-note strong { color: var(--text); font-weight: 500; }
 .page-filter { display: flex; gap: 6px; flex-wrap: wrap; margin: 20px 0 0; padding: 10px 14px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; align-items: center; }
 .page-filter-label { font-size: 11px; color: var(--text-muted); margin-right: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -113,14 +123,14 @@ td.sym { font-weight: 500; }
 .side-long { color: var(--success); font-weight: 500; }
 .fund-z-cell { font-weight: 500; }
 .dim-cell { color: var(--text-faint); font-size: 11px; }
-.risk-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: rgba(239,159,39,0.12); color: var(--warning); white-space: nowrap; }
+.risk-tag { font-size: 11px; padding: 1px 6px; border-radius: 3px; background: rgba(239,159,39,0.12); color: var(--warning); white-space: nowrap; }
 .action { display: inline-block; padding: 2px 9px; border-radius: 4px; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; white-space: nowrap; }
 .action-live  { background: rgba(15,110,86,0.15);  color: var(--success); }
 .action-stage { background: rgba(239,159,39,0.15); color: var(--warning); }
 .action-wait  { background: var(--bg-soft);        color: var(--text-muted); border: 1px solid var(--border); }
 .action-avoid { background: rgba(163,45,45,0.12);  color: var(--danger); }
 .action-stage[data-cash-blocked="1"] { box-shadow: inset 0 0 0 1px rgba(239,159,39,0.55); }
-.cash { display: inline-block; padding: 1px 6px; font-size: 10px; border-radius: 3px; letter-spacing: 0.04em; }
+.cash { display: inline-block; padding: 1px 6px; font-size: 11px; border-radius: 3px; letter-spacing: 0.04em; }
 .cash-open   { background: rgba(15,110,86,0.10);  color: var(--success); }
 .cash-closed { background: rgba(127,127,127,0.12); color: var(--text-muted); }
 .action-legend { font-size: 11px; color: var(--text-muted); padding: 6px 12px; margin-bottom: 8px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 6px; line-height: 1.6; }
@@ -135,7 +145,7 @@ td.sym { font-weight: 500; }
 .act-card-row strong { color: var(--text); font-weight: 500; margin-right: 4px; }
 .act-card-stop-warn { color: var(--danger); font-weight: 500; }
 .act-card-empty { padding: 24px; text-align: center; color: var(--text-muted); background: var(--bg-soft); border-radius: 8px; border: 1px dashed var(--border-strong); }
-.holding-pill { display: inline-block; padding: 1px 8px; font-size: 10px; border-radius: 3px; background: var(--bg-soft); color: var(--text); border: 1px solid var(--border); letter-spacing: 0.04em; }
+.holding-pill { display: inline-block; padding: 1px 8px; font-size: 11px; border-radius: 3px; background: var(--bg-soft); color: var(--text); border: 1px solid var(--border); letter-spacing: 0.04em; }
 .trigger-met { color: var(--success); font-size: 11px; margin-left: 4px; }
 .trigger-pending { color: var(--text-faint); font-size: 11px; margin-left: 4px; }
 @media (max-width: 800px) {
@@ -267,8 +277,17 @@ td.sym { font-weight: 500; }
   <div id="tbl-regime"></div>
 </section>
 
+<section id="hl-section" style="display:none;">
+  <h2>Cross-venue funding — Hyperliquid<span class="hint">same underlying, matched trailing windows on both venues — instantaneous snapshots are not comparable</span></h2>
+  <div class="hl-provenance" id="hl-provenance"></div>
+  <h3 style="margin: 16px 0 8px; font-size: 13px; font-weight: 500;">Index and sector watchlist <span class="hint">trade.xyz markets relevant to gate/thrust expression, with or without a Binance pair</span></h3>
+  <div id="tbl-hl-watchlist"></div>
+  <h3 style="margin: 20px 0 8px; font-size: 13px; font-weight: 500;">Largest cross-venue spreads <span class="hint">top 15 by |30d spread| — spread = Binance − Hyperliquid; positive means longs pay more on Binance</span></h3>
+  <div id="tbl-hl-pairs"></div>
+</section>
+
 <div class="footer-note">
-  <strong>How to read this dashboard.</strong> Recommendations = qualifying funding extremes (|fund_z| &gt; 1.0) with trend confirmation, ranked by <code>|fund_z| × max(|trend|/6, 0.5) × (1 + |Δz|)</code>. <strong>fund_z = annualised funding ÷ 10d realised vol</strong> — Sharpe-of-carry, cross-sectionally comparable across XAU at 15% vol and a memecoin at 200% vol. <strong>Δz = fund_z_7d − fund_z_30d</strong> — vol-normalised positioning acceleration; bigger |Δz| means crowdedness is fresh and vulnerable to mean reversion (vs chronic / structural). Conviction tier ★★★ = top decile, ★★ = next quartile, ★ = rest of qualifying. Stop = nearest 7d swing in trade-against direction. 14d carry = % of notional captured if held delta-neutral 14 days. Funding alone is not a thesis — pair with an independent fundamental view. Position sizing should assume a 2–3 day forced-unwind window for TradFi perps given delisting precedent. Liquidity filter: 24h volume ≥ $5M USDT. Refresh: twice daily at 08:00 and 20:00 SGT via local Task Scheduler.
+  <strong>How to read this dashboard.</strong> Recommendations = qualifying funding extremes (|fund_z| &gt; 1.0) with trend confirmation, ranked by <code>|fund_z| × max(|trend|/6, 0.5) × (1 + |Δz|)</code>. <strong>fund_z = annualised funding ÷ 10d realised vol</strong> — Sharpe-of-carry, cross-sectionally comparable across XAU at 15% vol and a memecoin at 200% vol. <strong>Δz = fund_z_7d − fund_z_30d</strong> — vol-normalised positioning acceleration; bigger |Δz| means crowdedness is fresh and vulnerable to mean reversion (vs chronic / structural). Conviction tier ★★★ = top decile, ★★ = next quartile, ★ = rest of qualifying. Stop = nearest 7d swing in trade-against direction. 14d carry = % of notional captured if held delta-neutral 14 days. Funding alone is not a thesis — pair with an independent fundamental view. Position sizing should assume a 2–3 day forced-unwind window for TradFi perps given delisting precedent. Liquidity filter: 24h volume ≥ $5M USDT. Refresh: twice daily at 08:00 and 20:00 SGT via local Task Scheduler. <strong>Hyperliquid columns</strong> compare the same underlying over matched trailing windows (identical annualisation on both venues, longs pay when positive); exact and alias pairs must pass a ±5% price-identity gate, "proxy" marks related-but-not-identical underlyings (ETF vs index level), and spreads are suppressed rather than published when a window is partial or the sentinel cross-check fails.
 </div>
 
 </div>
@@ -683,11 +702,11 @@ function makeHistChart(canvasId, rows, field, binEdges, refLines, xLabel) {
       responsive: true, maintainAspectRatio: false,
       layout: { padding: 8 },
       scales: {
-        x: { stacked: true, title: { display: true, text: xLabel, font: { size: 11 } }, grid: { display: false }, ticks: { font: { size: 10 } } },
-        y: { stacked: true, title: { display: true, text: 'count', font: { size: 11 } }, grid: { color: 'rgba(127,127,127,0.1)' }, ticks: { precision: 0, font: { size: 10 } } },
+        x: { stacked: true, title: { display: true, text: xLabel, font: { size: 11 } }, grid: { display: false }, ticks: { font: { size: 11 } } },
+        y: { stacked: true, title: { display: true, text: 'count', font: { size: 11 } }, grid: { color: 'rgba(127,127,127,0.1)' }, ticks: { precision: 0, font: { size: 11 } } },
       },
       plugins: {
-        legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 10 }, padding: 8 } },
+        legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 11 }, padding: 8 } },
         tooltip: {
           callbacks: {
             title: (items) => {
@@ -706,7 +725,7 @@ function makeHistChart(canvasId, rows, field, binEdges, refLines, xLabel) {
         ctx.strokeStyle = 'rgba(163,45,45,0.55)';
         ctx.setLineDash([4, 3]);
         ctx.lineWidth = 1.2;
-        ctx.font = '10px ' + getComputedStyle(document.body).fontFamily;
+        ctx.font = '11px ' + getComputedStyle(document.body).fontFamily;
         ctx.fillStyle = 'rgba(163,45,45,0.7)';
         refLines.forEach(({ value, label }) => {
           // Find nearest bin edge for placement.
@@ -835,17 +854,121 @@ function renderForCurrentFilter() {
 
   renderDistributions(filtered);
   renderQuadrant(filtered);
+  renderHl(filtered);
+}
+
+// ---------------------------------------------------------------------------
+// Cross-venue funding — Hyperliquid. Rows carry hl_* fields only where a
+// price-gated pair exists; spread cells are null when the pair is partial or
+// the sentinel cross-check degraded the block (banner explains).
+// ---------------------------------------------------------------------------
+function pairBadge(r) {
+  const t = r.hl_pair_type || '—';
+  const partial = r.hl_partial ? ' <span class="badge badge-pair-partial" title="Hyperliquid window materially shorter than 30d — spread suppressed">partial</span>' : '';
+  const titles = {
+    exact: 'Same ticker on both venues; price identity gate passed (±5%)',
+    alias: 'Different ticker, same underlying; price identity gate passed (±5%)',
+    proxy: 'Related underlying (ETF vs index level, or synthetic index) — funding comparable, prices not',
+  };
+  return `<span class="badge badge-pair-${t}" title="${titles[t] || ''}">${t}</span>${partial}`;
+}
+
+function spreadCell(v, degraded) {
+  if (v === null || v === undefined) {
+    const why = degraded ? 'suppressed — sentinel cross-check failed' : 'suppressed — partial Hyperliquid window';
+    return `<span class="muted" title="${why}">—</span>`;
+  }
+  return `<span class="spread-cell">${fmtPct(v)}</span>`;
+}
+
+function renderHl(filteredRows) {
+  const section = document.getElementById('hl-section');
+  const hl = DATA.hyperliquid;
+  if (!hl) { section.style.display = 'none'; return; }  // legacy scan.json without the block
+  section.style.display = '';
+  const degraded = hl.status !== 'ok';
+
+  const fetchedAt = hl.fetched_at_utc ? fmtTimestamp(hl.fetched_at_utc) : '—';
+  document.getElementById('hl-provenance').innerHTML =
+    `<strong>Method:</strong> ${hl.method || 'trailing mean funding, windows matched to the Binance columns'} · ` +
+    `<strong>Fetched:</strong> ${fetchedAt} · ` +
+    `<strong>Pairs:</strong> ${hl.pairs_matched ?? 0} matched (${hl.pairs_partial ?? 0} partial), ` +
+    `${(hl.pairs_rejected || []).length} rejected by identity gate · ` +
+    `Spread = Binance − Hyperliquid (positive: longs pay more on Binance).`;
+
+  // Watchlist: always the full configured list, unaffected by the category filter.
+  const wl = hl.watchlist || [];
+  const wlTarget = document.getElementById('tbl-hl-watchlist');
+  if (!wl.length) {
+    wlTarget.innerHTML = '<div class="muted" style="padding: 12px;">No watchlist data this run.</div>';
+  } else {
+    const wlHead = `<thead><tr>
+      <th>HL market</th><th class="num">Fund 30d</th><th class="num">Fund 7d</th>
+      <th class="num">HL 24h vol</th><th>Paired Binance</th>
+    </tr></thead>`;
+    const wlBody = wl.map(w => `<tr>
+      <td class="sym">${w.hl_symbol}${w.hl_partial ? ' <span class="badge badge-pair-partial">partial</span>' : ''}</td>
+      <td class="num ${w.hl_fund_ann_30d >= 0 ? 'danger' : 'success'}">${fmtPct(w.hl_fund_ann_30d)}</td>
+      <td class="num ${(w.hl_fund_ann_7d ?? 0) >= 0 ? 'danger' : 'success'}">${fmtPct(w.hl_fund_ann_7d)}</td>
+      <td class="num muted">${fmtVol(w.hl_day_ntl_vlm_m)}</td>
+      <td class="muted">${w.paired_symbol || '—'}</td>
+    </tr>`).join('');
+    wlTarget.innerHTML = `<table>${wlHead}<tbody>${wlBody}</tbody></table>`;
+  }
+
+  // Pairs: filtered rows carrying hl fields, largest |30d spread| first;
+  // rows with suppressed spreads sort to the bottom.
+  const pairs = filteredRows.filter(r => r.hl_symbol);
+  pairs.sort((a, b) => {
+    const ka = a.spread_ann_30d == null ? -1 : Math.abs(a.spread_ann_30d);
+    const kb = b.spread_ann_30d == null ? -1 : Math.abs(b.spread_ann_30d);
+    return kb - ka;
+  });
+  const top = pairs.slice(0, 15);
+  const target = document.getElementById('tbl-hl-pairs');
+  if (!top.length) {
+    target.innerHTML = '<div class="muted" style="padding: 12px;">No cross-venue pairs for this filter.</div>';
+    return;
+  }
+  const head = `<thead><tr>
+    <th>Symbol</th><th>Category</th><th>HL market</th><th>Pair</th>
+    <th class="num">Binance 30d</th><th class="num">HL 30d</th>
+    <th class="num" title="Binance 30d − Hyperliquid 30d, matched trailing windows">Spread 30d</th>
+    <th class="num">Binance 7d</th><th class="num">HL 7d</th>
+    <th class="num" title="Binance 7d − Hyperliquid 7d, matched trailing windows">Spread 7d</th>
+  </tr></thead>`;
+  const body = top.map(r => `<tr>
+    <td class="sym">${r.symbol}</td>
+    <td>${catBadge(r.category)}</td>
+    <td class="muted">${r.hl_symbol}</td>
+    <td>${pairBadge(r)}</td>
+    <td class="num ${r.fund_ann_30d >= 0 ? 'danger' : 'success'}">${fmtPct(r.fund_ann_30d)}</td>
+    <td class="num ${(r.hl_fund_ann_30d ?? 0) >= 0 ? 'danger' : 'success'}">${fmtPct(r.hl_fund_ann_30d)}</td>
+    <td class="num">${spreadCell(r.spread_ann_30d, degraded)}</td>
+    <td class="num ${(r.fund_ann_7d ?? 0) >= 0 ? 'danger' : 'success'}">${fmtPct(r.fund_ann_7d)}</td>
+    <td class="num ${(r.hl_fund_ann_7d ?? 0) >= 0 ? 'danger' : 'success'}">${fmtPct(r.hl_fund_ann_7d)}</td>
+    <td class="num">${spreadCell(r.spread_ann_7d, degraded)}</td>
+  </tr>`).join('');
+  target.innerHTML = `<table>${head}<tbody>${body}</tbody></table>`;
 }
 
 function renderAll() {
   document.getElementById('timestamp').innerHTML =
     `<div>Last updated</div><strong>${fmtTimestamp(DATA.generated_at_utc)}</strong>`;
 
+  const banners = [];
   const ageHours = (Date.now() - new Date(DATA.generated_at_utc).getTime()) / 3_600_000;
   if (ageHours > 18) {
-    document.getElementById('banner-area').innerHTML =
-      `<div class="stale-banner">Data is ${ageHours.toFixed(0)} hours old — last refresh may have failed. Check Task Scheduler logs (logs/refresh.log).</div>`;
+    banners.push(`<div class="stale-banner">Data is ${ageHours.toFixed(0)} hours old — last refresh may have failed. Check Task Scheduler logs (logs/refresh.log).</div>`);
   }
+  // Hyperliquid enrichment failures must be visible, never silent: the
+  // Binance columns are unaffected, but cross-venue cells are suppressed.
+  const hl = DATA.hyperliquid;
+  if (hl && hl.status !== 'ok') {
+    const reason = hl.reason || 'fetch failed';
+    banners.push(`<div class="stale-banner">Hyperliquid columns ${hl.status} — ${reason}. Binance data is unaffected.</div>`);
+  }
+  document.getElementById('banner-area').innerHTML = banners.join('');
 
   renderForCurrentFilter();
 }

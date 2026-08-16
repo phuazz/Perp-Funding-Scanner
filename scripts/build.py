@@ -33,6 +33,8 @@ from zoneinfo import ZoneInfo
 import requests
 import pandas as pd
 
+import hyperliquid_funding
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -1018,6 +1020,13 @@ def main():
         sys.exit(1)
     payload = build_payload(rows)
     print(f"Summary: {payload['summary']}")
+    # Cross-venue enrichment: Hyperliquid funding over windows matched to the
+    # Binance columns. Fail-open — an unreachable Hyperliquid must never cost
+    # the Binance scan; failures surface via payload["hyperliquid"].status
+    # and the dashboard banner instead.
+    hyperliquid_funding.enrich_payload(
+        payload, globals().get("funding_history_aggregate", {}) or {}, DATA_DIR, verbose=True
+    )
     write_output(payload)
     print("Done.")
 
