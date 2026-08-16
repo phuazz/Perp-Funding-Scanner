@@ -1012,6 +1012,70 @@ def write_output(payload):
     print(f"Wrote {out_index} ({out_index.stat().st_size / 1024:.1f} KB)")
 
 
+def log_tradfi_universe():
+    """Append today's TradFi listing roster to data/tradfi_universe_log.json.
+
+    Point-in-time record for any strategy built on these contracts: Binance
+    listed 51 TradFi perps in June 2026 and 40 in July 2026, and delists with a
+    2-3 day unwind window, so a survivorship-clean universe must be captured as
+    it stood, never reconstructed later (the Crypto-Breadth register carries
+    the filed lesson). Full roster stored only when membership or status
+    changed; otherwise a slim heartbeat row, so the file grows with news, not
+    with time. Fail-open: a failure here must never cost the scan.
+    """
+    info = get_exchange_info()
+    roster = sorted(
+        (
+            {
+                "symbol": s["symbol"],
+                "base": s["baseAsset"],
+                "quote": s.get("quoteAsset"),
+                "status": s.get("status"),
+                "onboard_ms": s.get("onboardDate"),
+            }
+            for s in info["symbols"]
+            if s.get("contractType") == "TRADIFI_PERPETUAL"
+        ),
+        key=lambda r: r["symbol"],
+    )
+    path = DATA_DIR / "tradfi_universe_log.json"
+    if path.exists():
+        log = json.loads(path.read_text(encoding="utf-8"))
+    else:
+        log = {
+            "note": (
+                "Point-in-time TRADIFI_PERPETUAL roster, appended per scan. "
+                "Full roster only on change; heartbeat rows otherwise. "
+                "Started 2026-08-16 for the TradFi thematic workstream."
+            ),
+            "snapshots": [],
+        }
+    stamp = datetime.now(timezone.utc).isoformat()
+    prev_full = next(
+        (s for s in reversed(log["snapshots"]) if "roster" in s), None)
+    changed = prev_full is None or prev_full["roster"] != roster
+    if changed:
+        entry = {"ts_utc": stamp, "n": len(roster), "roster": roster}
+        if prev_full is not None:
+            prev_syms = {r["symbol"] for r in prev_full["roster"]}
+            now_syms = {r["symbol"] for r in roster}
+            entry["added"] = sorted(now_syms - prev_syms)
+            entry["removed"] = sorted(prev_syms - now_syms)
+            prev_status = {r["symbol"]: r["status"] for r in prev_full["roster"]}
+            entry["status_changes"] = sorted(
+                f"{r['symbol']}: {prev_status[r['symbol']]} -> {r['status']}"
+                for r in roster
+                if r["symbol"] in prev_status and prev_status[r["symbol"]] != r["status"]
+            )
+    else:
+        entry = {"ts_utc": stamp, "n": len(roster), "unchanged": True}
+    log["snapshots"].append(entry)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(log, indent=1), encoding="utf-8")
+    print(f"TradFi universe log: {len(roster)} contracts, "
+          + ("roster stored (changed)" if changed else "heartbeat (unchanged)"))
+
+
 def main():
     print(f"Starting scan at {datetime.now(timezone.utc).isoformat()}")
     rows = scan(verbose=True)
@@ -1028,8 +1092,16 @@ def main():
         payload, globals().get("funding_history_aggregate", {}) or {}, DATA_DIR, verbose=True
     )
     write_output(payload)
+    # Point-in-time TradFi roster capture — fail-open, never costs the scan.
+    try:
+        log_tradfi_universe()
+    except Exception as e:
+        print(f"TradFi universe log FAILED (scan unaffected): {type(e).__name__}: {e}")
     print("Done.")
 
 
 if __name__ == "__main__":
+    if "--log-universe-only" in sys.argv:
+        log_tradfi_universe()
+        sys.exit(0)
     main()
