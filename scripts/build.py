@@ -1012,6 +1012,70 @@ def write_output(payload):
     print(f"Wrote {out_index} ({out_index.stat().st_size / 1024:.1f} KB)")
 
 
+def collect_shadow_books():
+    """Summary state of the two live shadow books (WS17 xyz:SMH thrust shadow
+    and the TradFi basket shadow) for the dashboard. AGGREGATES ONLY — the
+    basket repo is local-only by owner default, so no fill prices or per-order
+    detail are published; the public page carries book-level state. Fail-open:
+    a missing log yields an absent book, never a failed scan. Python datetime
+    (months 1-indexed) for the close-out countdown."""
+    from datetime import date
+
+    close_out = date(2026, 9, 13)
+    days_left = (close_out - datetime.now(timezone.utc).date()).days
+    out = {"close_out": close_out.isoformat(), "days_to_close_out": days_left}
+
+    try:
+        p = Path(r"C:\dev\breadth-thrust-etf\data\ws17_shadow_log.json")
+        rows = json.loads(p.read_text(encoding="utf-8"))
+        execs = [r for r in rows if r.get("type") == "execution"]
+        ops_ok = [r for r in rows if r.get("type") == "ops" and r.get("event") == "OK"]
+        state = json.loads(Path(r"C:\dev\breadth-thrust-etf\data\ws17_shadow_state.json")
+                           .read_text(encoding="utf-8"))
+        out["smh"] = {
+            "label": "WS17 xyz:SMH thrust shadow (micro-live US$300, 1x)",
+            "activated": "2026-08-16",
+            "mode": "in-trade" if state.get("open_position") else "waiting",
+            "n_fills_logged": len(execs),
+            "n_probes_logged": len([r for r in execs if str(r.get("kind", "")).startswith("probe")]),
+            "last_evaluator_ok_utc": ops_ok[-1]["ts_utc"] if ops_ok else None,
+            "fail_events": len([r for r in rows if "FAIL" in str(r.get("event", ""))]),
+        }
+    except Exception as e:  # noqa: BLE001
+        out["smh"] = {"error": f"{type(e).__name__}"}
+
+    try:
+        root = Path(r"C:\dev\tradfi-thematic\data")
+        log = json.loads((root / "basket_shadow_log.json").read_text(encoding="utf-8"))
+        order = json.loads((root / "order_list_today.json").read_text(encoding="utf-8"))
+        px = json.loads((root / "last_prices.json").read_text(encoding="utf-8"))
+        qty = {}
+        for r in log:
+            if r.get("type") != "execution":
+                continue
+            sign = 1.0 if str(r.get("kind", "")).endswith("entry") or r.get("kind") == "buy" else -1.0
+            qty[r["symbol"]] = qty.get(r["symbol"], 0.0) + sign * float(r["qty"])
+        holdings = {s: q for s, q in qty.items() if abs(q) > 1e-12}
+        book_val = sum(q * px.get(s, {}).get("px", 0.0) for s, q in holdings.items())
+        ops = [r for r in log if r.get("type") == "ops"]
+        out["basket"] = {
+            "label": "TradFi equal-weight basket shadow (Option A, US$5,000, 1x)",
+            "activated": "2026-08-16",
+            "mode": order.get("mode"),
+            "n_members": order.get("n_members"),
+            "n_held": len(holdings),
+            "target_usd_per_name": order.get("target_usd_per_name"),
+            "book_value_usd": round(book_val, 2),
+            "established_pct": round(len(holdings) / order["n_members"], 3) if order.get("n_members") else None,
+            "orders_pending_today": len(order.get("orders", [])),
+            "last_evaluator_ok_utc": ops[-1]["ts_utc"] if ops else None,
+            "fail_events": len([r for r in log if "FAIL" in str(r.get("event", ""))]),
+        }
+    except Exception as e:  # noqa: BLE001
+        out["basket"] = {"error": f"{type(e).__name__}"}
+    return out
+
+
 def log_tradfi_universe():
     """Append today's TradFi listing roster to data/tradfi_universe_log.json.
 
@@ -1091,6 +1155,11 @@ def main():
     hyperliquid_funding.enrich_payload(
         payload, globals().get("funding_history_aggregate", {}) or {}, DATA_DIR, verbose=True
     )
+    # Shadow-book summaries (aggregates only) — fail-open, never costs the scan.
+    try:
+        payload["shadow_books"] = collect_shadow_books()
+    except Exception as e:
+        print(f"shadow books skipped: {type(e).__name__}: {e}")
     write_output(payload)
     # Point-in-time TradFi roster capture — fail-open, never costs the scan.
     try:

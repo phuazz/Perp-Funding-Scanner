@@ -286,6 +286,11 @@ td.sym { font-weight: 500; }
   <div id="tbl-hl-pairs"></div>
 </section>
 
+<section id="shadow-section" style="display:none;">
+  <h2>Shadow books<span class="hint">two live micro experiments, aggregates only — logs stay local; combined close-out reads the frozen FAIL triggers</span></h2>
+  <div id="shadow-cards" class="actionable-grid"></div>
+</section>
+
 <div class="footer-note">
   <strong>How to read this dashboard.</strong> Recommendations = qualifying funding extremes (|fund_z| &gt; 1.0) with trend confirmation, ranked by <code>|fund_z| × max(|trend|/6, 0.5) × (1 + |Δz|)</code>. <strong>fund_z = annualised funding ÷ 10d realised vol</strong> — Sharpe-of-carry, cross-sectionally comparable across XAU at 15% vol and a memecoin at 200% vol. <strong>Δz = fund_z_7d − fund_z_30d</strong> — vol-normalised positioning acceleration; bigger |Δz| means crowdedness is fresh and vulnerable to mean reversion (vs chronic / structural). Conviction tier ★★★ = top decile, ★★ = next quartile, ★ = rest of qualifying. Stop = nearest 7d swing in trade-against direction. 14d carry = % of notional captured if held delta-neutral 14 days. Funding alone is not a thesis — pair with an independent fundamental view. Position sizing should assume a 2–3 day forced-unwind window for TradFi perps given delisting precedent. Liquidity filter: 24h volume ≥ $5M USDT. Refresh: twice daily at 08:00 and 20:00 SGT via local Task Scheduler. <strong>Hyperliquid columns</strong> compare the same underlying over matched trailing windows (identical annualisation on both venues, longs pay when positive); exact and alias pairs must pass a ±5% price-identity gate, "proxy" marks related-but-not-identical underlyings (ETF vs index level), and spreads are suppressed rather than published when a window is partial or the sentinel cross-check fails.
 </div>
@@ -855,6 +860,51 @@ function renderForCurrentFilter() {
   renderDistributions(filtered);
   renderQuadrant(filtered);
   renderHl(filtered);
+  renderShadowBooks();
+}
+
+// ---------------------------------------------------------------------------
+// Shadow books — summary cards for the two live micro experiments. Aggregates
+// only (fills and prices stay in the local logs); absent-safe for old payloads.
+// ---------------------------------------------------------------------------
+function shadowCard(b, extraRows) {
+  if (!b) return '';
+  if (b.error) {
+    return `<div class="act-card"><div class="act-card-header"><span class="act-card-direction">${b.label || 'shadow book'}</span></div>
+      <div class="act-card-row muted">summary unavailable this run (${b.error})</div></div>`;
+  }
+  const failCls = b.fail_events ? 'danger' : 'success';
+  const evalTs = b.last_evaluator_ok_utc ? fmtTimestamp(b.last_evaluator_ok_utc) : '—';
+  return `<div class="act-card">
+    <div class="act-card-header">
+      <span class="act-card-direction">${b.label}</span>
+      <span class="holding-pill">${b.mode || '—'}</span>
+    </div>
+    ${extraRows}
+    <div class="act-card-row"><strong>Triggers:</strong> <span class="${failCls}">${b.fail_events ? b.fail_events + ' FAIL event(s)' : 'none breached'}</span></div>
+    <div class="act-card-row"><strong>Evaluator:</strong> last OK ${evalTs}</div>
+    <div class="act-card-row"><strong>Activated:</strong> ${b.activated}</div>
+  </div>`;
+}
+
+function renderShadowBooks() {
+  const section = document.getElementById('shadow-section');
+  const sb = DATA.shadow_books;
+  if (!sb) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  const basketRows = sb.basket && !sb.basket.error ? `
+    <div class="act-card-row"><strong>Established:</strong> ${sb.basket.n_held} of ${sb.basket.n_members} names (${sb.basket.established_pct != null ? Math.round(sb.basket.established_pct * 100) + '%' : '—'})</div>
+    <div class="act-card-row"><strong>Book value:</strong> $${(sb.basket.book_value_usd ?? 0).toFixed(0)} of $5,000 · target $${sb.basket.target_usd_per_name ?? '—'}/name</div>
+    <div class="act-card-row"><strong>Orders pending today:</strong> ${sb.basket.orders_pending_today ?? 0}</div>` : '';
+  const smhRows = sb.smh && !sb.smh.error ? `
+    <div class="act-card-row"><strong>Position:</strong> ${sb.smh.mode === 'in-trade' ? 'OPEN' : 'flat — waiting for signal / probes'}</div>
+    <div class="act-card-row"><strong>Fills logged:</strong> ${sb.smh.n_fills_logged} (${sb.smh.n_probes_logged} probes)</div>` : '';
+  document.getElementById('shadow-cards').innerHTML =
+    shadowCard(sb.basket, basketRows) + shadowCard(sb.smh, smhRows) +
+    `<div class="act-card"><div class="act-card-header"><span class="act-card-direction">Combined close-out</span></div>
+      <div class="act-card-row"><strong>Date:</strong> ${sb.close_out} · <strong>${sb.days_to_close_out}</strong> days remaining</div>
+      <div class="act-card-row muted">One sitting, both records: FAIL-EXECUTION 15bp median fill · FAIL-BAND +6%/yr rolling funding · FAIL-OPS missed windows or any margin call at 1×.</div>
+    </div>`;
 }
 
 // ---------------------------------------------------------------------------
