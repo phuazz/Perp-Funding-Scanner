@@ -1033,7 +1033,7 @@ def collect_shadow_books():
         state = json.loads(Path(r"C:\dev\breadth-thrust-etf\data\ws17_shadow_state.json")
                            .read_text(encoding="utf-8"))
         out["smh"] = {
-            "label": "WS17 xyz:SMH thrust shadow (micro-live US$300, 1x)",
+            "label": "WS17 xyz:SMH thrust shadow — DESCOPED 2026-08-20, not started",
             "activated": "2026-08-16",
             "mode": "in-trade" if state.get("open_position") else "waiting",
             "n_fills_logged": len(execs),
@@ -1059,7 +1059,7 @@ def collect_shadow_books():
         book_val = sum(q * px.get(s, {}).get("px", 0.0) for s, q in holdings.items())
         ops = [r for r in log if r.get("type") == "ops"]
         out["basket"] = {
-            "label": "TradFi equal-weight basket shadow (Option A, US$5,000, 1x)",
+            "label": "TradFi rotation shadow (K=10 cap=2, US$5,000, 1x; Amendment 2)",
             "activated": "2026-08-16",
             "mode": order.get("mode"),
             "n_members": order.get("n_members"),
