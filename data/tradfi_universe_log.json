@@ -15222,6 +15222,11 @@
     "BYDUSDT: PENDING_TRADING -> TRADING",
     "HK0992USDT: PENDING_TRADING -> TRADING"
    ]
+  },
+  {
+   "ts_utc": "2026-09-08T00:13:41.121392+00:00",
+   "n": 191,
+   "unchanged": true
   }
  ]
 }
