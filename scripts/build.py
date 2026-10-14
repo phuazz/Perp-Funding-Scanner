@@ -1018,12 +1018,18 @@ def collect_shadow_books():
     basket repo is local-only by owner default, so no fill prices or per-order
     detail are published; the public page carries book-level state. Fail-open:
     a missing log yields an absent book, never a failed scan. Python datetime
-    (months 1-indexed) for the close-out countdown."""
+    (months 1-indexed) for the close-out countdown.
+
+    Both books are closed: SMH descoped not-started 2026-08-20, the basket
+    closed out NOT EXERCISED 2026-10-14 (tradfi-thematic
+    reviews/2026-10-14_basket-shadow-close-out.md). `closed_out` replaces the
+    countdown on the page; the counters below are the final state."""
     from datetime import date
 
     close_out = date(2026, 9, 13)
     days_left = (close_out - datetime.now(timezone.utc).date()).days
-    out = {"close_out": close_out.isoformat(), "days_to_close_out": days_left}
+    out = {"close_out": close_out.isoformat(), "days_to_close_out": days_left,
+           "closed_out": "2026-10-14"}
 
     try:
         p = Path(r"C:\dev\breadth-thrust-etf\data\ws17_shadow_log.json")
@@ -1059,7 +1065,7 @@ def collect_shadow_books():
         book_val = sum(q * px.get(s, {}).get("px", 0.0) for s, q in holdings.items())
         ops = [r for r in log if r.get("type") == "ops"]
         out["basket"] = {
-            "label": "TradFi rotation shadow (K=10 cap=2, US$5,000, 1x; Amendment 2)",
+            "label": "TradFi rotation shadow (K=10 cap=2, US$5,000, 1x) — CLOSED OUT 2026-10-14, never exercised",
             "activated": "2026-08-16",
             "mode": order.get("mode"),
             "n_members": order.get("n_members"),

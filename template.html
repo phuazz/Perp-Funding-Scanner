@@ -287,7 +287,7 @@ td.sym { font-weight: 500; }
 </section>
 
 <section id="shadow-section" style="display:none;">
-  <h2>Shadow books<span class="hint">two live micro experiments — full detail on the <a href="https://phuazz.github.io/tradfi-thematic/">tradfi-thematic dashboard</a>; combined close-out reads the frozen FAIL triggers</span></h2>
+  <h2>Shadow books<span class="hint">two micro experiments, both closed with zero fills — record on the <a href="https://phuazz.github.io/tradfi-thematic/">tradfi-thematic dashboard</a></span></h2>
   <div id="shadow-cards" class="actionable-grid"></div>
 </section>
 
@@ -902,7 +902,9 @@ function renderShadowBooks() {
   document.getElementById('shadow-cards').innerHTML =
     shadowCard(sb.basket, basketRows) + shadowCard(sb.smh, smhRows) +
     `<div class="act-card"><div class="act-card-header"><span class="act-card-direction">Combined close-out</span></div>
-      <div class="act-card-row"><strong>Date:</strong> ${sb.close_out} · <strong>${sb.days_to_close_out}</strong> days remaining</div>
+      <div class="act-card-row"><strong>Date:</strong> ${sb.closed_out
+        ? `closed out ${sb.closed_out} (due ${sb.close_out}) · both books closed with zero fills, so no trigger could be read`
+        : `${sb.close_out} · <strong>${sb.days_to_close_out}</strong> days remaining`}</div>
       <div class="act-card-row muted">One sitting, both records: FAIL-EXECUTION 15bp median fill · FAIL-BAND +6%/yr rolling funding · FAIL-OPS missed windows or any margin call at 1×.</div>
     </div>`;
 }
