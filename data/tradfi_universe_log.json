@@ -35668,6 +35668,11 @@
     "FRHCUSDT: PENDING_TRADING -> TRADING",
     "NUUSDT: PENDING_TRADING -> TRADING"
    ]
+  },
+  {
+   "ts_utc": "2026-11-13T08:19:43.272275+00:00",
+   "n": 237,
+   "unchanged": true
   }
  ]
 }
