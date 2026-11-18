@@ -37387,6 +37387,11 @@
    "status_changes": [
     "ANTHROPICUSDT: TRADING -> SETTLING"
    ]
+  },
+  {
+   "ts_utc": "2026-11-18T00:07:06.723733+00:00",
+   "n": 238,
+   "unchanged": true
   }
  ]
 }
