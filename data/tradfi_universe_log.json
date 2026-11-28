@@ -44443,6 +44443,11 @@
     "HK1888USDT: PENDING_TRADING -> TRADING",
     "XIAOMIUSDT: PENDING_TRADING -> TRADING"
    ]
+  },
+  {
+   "ts_utc": "2026-11-28T00:07:24.954414+00:00",
+   "n": 249,
+   "unchanged": true
   }
  ]
 }
